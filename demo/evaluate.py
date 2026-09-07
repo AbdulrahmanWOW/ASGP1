@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LAB_ROOT = (ROOT / "demo" / "lab_data").resolve()
 SCENARIOS_PATH = ROOT / "demo" / "scenarios.json"
 REPORT_DIR = ROOT / "evaluation" / "latest"
+FRONTEND_REPORT_PATH = ROOT / "frontend" / "public" / "evaluation-results.json"
 
 
 @dataclass
@@ -192,9 +193,10 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def write_reports(full: dict[str, Any], ablation: dict[str, Any], output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
-    (output / "results.json").write_text(
-        json.dumps({"full": full, "policy_only": ablation}, indent=2), encoding="utf-8"
-    )
+    serialized = json.dumps({"full": full, "policy_only": ablation}, indent=2)
+    (output / "results.json").write_text(serialized, encoding="utf-8")
+    FRONTEND_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    FRONTEND_REPORT_PATH.write_text(serialized, encoding="utf-8")
     with (output / "results.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle, fieldnames=[key for key in full["results"][0] if key != "finding_codes"]

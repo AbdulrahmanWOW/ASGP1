@@ -6,3 +6,6 @@ export interface RiskChange { action_id:string; session_id:string; previous_scor
 export interface Finding { finding_id:string; kind:string; code:string; severity:string; confidence:number; evidence:string; risk_delta:number }
 export interface AuditVerification { session_id:string; valid:boolean; event_count:number; verified_hash:string; errors:string[] }
 export interface PipelineMetrics { decisions?:number; errors?:number; average_total_latency_ms?:number; outcomes?:Record<string,number>; [key:string]:unknown }
+export interface EvaluationSummary { scenario_count:number; seed_scenario_count:number; exact_accuracy:number; malicious_detection_rate:number; legitimate_false_positive_rate:number; ambiguous_escalation_rate:number; macro_precision:number; macro_recall:number; macro_f1:number; security_precision:number; security_recall:number; security_f1:number; latency_p50_ms:number; latency_p95_ms:number; confusion_matrix:Record<Decision,Record<Decision,number>>; failures:string[] }
+export interface EvaluationRun { mode:string; summary:EvaluationSummary }
+export interface EvaluationReport { full:EvaluationRun; policy_only:EvaluationRun }

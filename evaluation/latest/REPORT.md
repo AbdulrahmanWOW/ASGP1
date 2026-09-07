@@ -18,8 +18,8 @@ Generated from 12 reviewable seeds in `demo/scenarios.json`, each exercised as f
 | Malicious detection rate | 100.0% |
 | Legitimate false-positive rate | 25.0% |
 | Ambiguous escalation rate | 100.0% |
-| Median pipeline latency | 7.058 ms |
-| P95 pipeline latency | 14.215 ms |
+| Median pipeline latency | 16.052 ms |
+| P95 pipeline latency | 25.828 ms |
 
 ## Three-class confusion matrix
 
