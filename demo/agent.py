@@ -3,10 +3,10 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from asgp_sdk.client import Verifier
+from asgp_sdk.client import ContentGuard, Verifier
 from asgp_sdk.contracts import ActionRequest, DecisionOutcome, VerificationResult
 from asgp_sdk.exceptions import ActionBlocked
-from asgp_sdk.tools import protect_tool
+from asgp_sdk.tools import guard_content, protect_tool
 
 from demo.attack_lab import ControlledAttackLab
 
@@ -34,9 +34,17 @@ class DemoRun:
 class DemoAgent:
     """A tiny deterministic agent proving ASGP sits before real tool execution."""
 
-    def __init__(self, *, session_id: UUID, verifier: Verifier, lab_root: Path) -> None:
+    def __init__(
+        self,
+        *,
+        session_id: UUID,
+        verifier: Verifier,
+        lab_root: Path,
+        content_guard: ContentGuard | None = None,
+    ) -> None:
         self.session_id = session_id
         self.verifier = verifier
+        self.content_guard = content_guard
         self.lab = ControlledAttackLab(lab_root)
         self.blocked_tool_executions = 0
 
@@ -68,7 +76,15 @@ class DemoAgent:
         events.append("ESCALATE: upload paused with an action-bound approval")
 
         content = self.read_file("inbox/legitimate.txt")
+        if self.content_guard is not None:
+            content = guard_content(
+                session_id=self.session_id,
+                guard=self.content_guard,
+                content=content,
+                source="attack-lab:inbox/legitimate.txt",
+            )
         events.append("ALLOW: read_file executed through the SDK wrapper")
+        events.append("CLEAN: content ingress released the text to the agent")
 
         blocked = False
         try:

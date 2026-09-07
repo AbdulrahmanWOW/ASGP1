@@ -5,12 +5,30 @@ from functools import wraps
 from typing import Any, ParamSpec, TypeVar, cast
 from uuid import UUID
 
-from asgp_sdk.client import Verifier
-from asgp_sdk.contracts import ActionRequest, DecisionOutcome
-from asgp_sdk.exceptions import ActionBlocked, ApprovalRequired
+from asgp_sdk.client import ContentGuard, Verifier
+from asgp_sdk.contracts import (
+    ActionRequest,
+    ContentDisposition,
+    ContentIngressRequest,
+    DecisionOutcome,
+)
+from asgp_sdk.exceptions import ActionBlocked, ApprovalRequired, ContentQuarantined
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+
+def guard_content(
+    *, session_id: UUID, guard: ContentGuard, content: str, source: str = "unknown"
+) -> str:
+    """Return clean external content or fail closed before agent consumption."""
+
+    result = guard.ingest_content(
+        ContentIngressRequest(session_id=session_id, content=content, source=source)
+    )
+    if result.disposition is ContentDisposition.QUARANTINED or result.safe_content is None:
+        raise ContentQuarantined(tuple(finding.code for finding in result.findings))
+    return result.safe_content
 
 
 def protect_tool(

@@ -2,7 +2,12 @@ from pathlib import Path
 from uuid import UUID
 
 from app.main import create_app
-from asgp_sdk.contracts import ActionRequest, VerificationResult
+from asgp_sdk.contracts import (
+    ActionRequest,
+    ContentIngressRequest,
+    ContentIngressResult,
+    VerificationResult,
+)
 from fastapi.testclient import TestClient
 
 from demo.agent import DemoAgent
@@ -18,6 +23,13 @@ class ClientVerifierAdapter:
         )
         response.raise_for_status()
         return VerificationResult.model_validate(response.json())
+
+    def ingest_content(self, request: ContentIngressRequest) -> ContentIngressResult:
+        response = self.client.post(
+            "/api/v1/content/ingress", json=request.model_dump(mode="json")
+        )
+        response.raise_for_status()
+        return ContentIngressResult.model_validate(response.json())
 
 
 def test_demo_agent_proves_allow_block_and_escalate(tmp_path: Path) -> None:
@@ -47,9 +59,11 @@ def test_demo_agent_proves_allow_block_and_escalate(tmp_path: Path) -> None:
                 "allowed_destinations": ["review.internal"],
             },
         ).json()
+        adapter = ClientVerifierAdapter(client)
         run = DemoAgent(
             session_id=UUID(session["session_id"]),
-            verifier=ClientVerifierAdapter(client),
+            verifier=adapter,
+            content_guard=adapter,
             lab_root=lab_root,
         ).run()
         approvals = client.get("/api/v1/approvals").json()

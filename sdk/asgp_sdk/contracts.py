@@ -63,6 +63,28 @@ class ApprovalState(StrEnum):
     CONSUMED = "consumed"
 
 
+class ContentDisposition(StrEnum):
+    CLEAN = "clean"
+    QUARANTINED = "quarantined"
+
+
+class ContentIngressRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    session_id: UUID
+    content: str = Field(min_length=1, max_length=100_000)
+    source: str = Field(default="unknown", max_length=120)
+
+
+class ContentIngressResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    disposition: ContentDisposition
+    safe_content: str | None = None
+    max_confidence: float = Field(ge=0, le=1)
+    findings: tuple["SecurityFindingResult", ...] = ()
+
+
 class SecurityFindingResult(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
@@ -75,6 +97,7 @@ class SecurityFindingResult(BaseModel):
 
 
 VerificationResult.model_rebuild()
+ContentIngressResult.model_rebuild()
 
 
 class ApprovalResult(BaseModel):

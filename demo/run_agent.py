@@ -65,9 +65,11 @@ def main() -> None:
     base_url = args.base_url.rstrip("/")
     wait_for_api(base_url)
     session_id = prepare_demo(base_url)
+    client = ASGPClient(base_url)
     result = DemoAgent(
         session_id=session_id,
-        verifier=ASGPClient(base_url),
+        verifier=client,
+        content_guard=client,
         lab_root=LAB_ROOT,
     ).run()
     print(json.dumps(result.as_dict(), indent=2))

@@ -43,3 +43,21 @@ class ContentScanResult(BaseModel):
     suspicious: bool
     max_confidence: float = Field(ge=0, le=1)
     findings: tuple[SecurityFinding, ...]
+
+
+class ContentDisposition(StrEnum):
+    CLEAN = "clean"
+    QUARANTINED = "quarantined"
+
+
+class ContentIngressRequest(ContentScanRequest):
+    session_id: UUID
+
+
+class ContentIngressResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    disposition: ContentDisposition
+    safe_content: str | None = None
+    max_confidence: float = Field(ge=0, le=1)
+    findings: tuple[SecurityFinding, ...]

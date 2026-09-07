@@ -14,3 +14,11 @@ class ActionBlocked(ASGPError):
 
 class ApprovalRequired(ASGPError):
     """Reserved for the Phase 3 approval workflow."""
+
+
+class ContentQuarantined(ASGPError):
+    """Raised when untrusted content must not be exposed to the agent."""
+
+    def __init__(self, finding_codes: tuple[str, ...]) -> None:
+        self.finding_codes = finding_codes
+        super().__init__(f"Content quarantined: {', '.join(finding_codes)}")

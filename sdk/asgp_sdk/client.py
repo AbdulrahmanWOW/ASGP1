@@ -5,13 +5,24 @@ from uuid import UUID
 import httpx
 from pydantic import ValidationError
 
-from asgp_sdk.contracts import ActionRequest, ApprovalResult, ApprovalState, VerificationResult
+from asgp_sdk.contracts import (
+    ActionRequest,
+    ApprovalResult,
+    ApprovalState,
+    ContentIngressRequest,
+    ContentIngressResult,
+    VerificationResult,
+)
 from asgp_sdk.exceptions import ActionBlocked, VerificationUnavailable
 from asgp_sdk.signing import ActionSigner
 
 
 class Verifier(Protocol):
     def verify(self, request: ActionRequest) -> VerificationResult: ...
+
+
+class ContentGuard(Protocol):
+    def ingest_content(self, request: ContentIngressRequest) -> ContentIngressResult: ...
 
 
 class ASGPClient:
@@ -43,6 +54,18 @@ class ASGPClient:
             return VerificationResult.model_validate(response.json())
         except (httpx.HTTPError, ValidationError, ValueError) as error:
             raise VerificationUnavailable("ASGP verification failed closed") from error
+
+    def ingest_content(self, request: ContentIngressRequest) -> ContentIngressResult:
+        try:
+            response = httpx.post(
+                f"{self.base_url}/api/v1/content/ingress",
+                json=request.model_dump(mode="json"),
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+            return ContentIngressResult.model_validate(response.json())
+        except (httpx.HTTPError, ValidationError, ValueError) as error:
+            raise VerificationUnavailable("ASGP content ingress failed closed") from error
 
     def wait_for_approval(
         self,
