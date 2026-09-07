@@ -35,14 +35,22 @@ class NoSignalBehavior:
 
 
 def load_scenarios(path: Path = SCENARIOS_PATH) -> list[dict[str, Any]]:
-    scenarios = json.loads(path.read_text(encoding="utf-8"))
+    seeds = json.loads(path.read_text(encoding="utf-8"))
     required = {"id", "label", "title", "intent", "tool", "allowed_tools", "parameters", "expected"}
-    for scenario in scenarios:
+    for scenario in seeds:
         missing = required - scenario.keys()
         if missing:
             raise ValueError(f"Scenario {scenario.get('id', '?')} is missing {sorted(missing)}")
         if scenario["label"] not in {"legitimate", "ambiguous", "malicious"}:
             raise ValueError(f"Scenario {scenario['id']} has an invalid label")
+    scenarios: list[dict[str, Any]] = []
+    for seed in seeds:
+        for variant in range(1, 6):
+            scenario = json.loads(json.dumps(seed))
+            scenario["id"] = f"{seed['id']}-V{variant}"
+            scenario["title"] = f"{seed['title']} — variant {variant}"
+            scenario["parameters"]["evaluation_variant"] = variant
+            scenarios.append(scenario)
     return scenarios
 
 
@@ -118,8 +126,44 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     ambiguous = [row for row in rows if row["label"] == "ambiguous"]
     latency = sorted(float(row["latency_ms"]) for row in rows)
     p95_index = max(0, min(len(latency) - 1, round(0.95 * len(latency)) - 1))
+    labels = ("ALLOW", "ESCALATE", "BLOCK")
+    confusion = {
+        expected: {
+            actual: sum(row["expected"] == expected and row["actual"] == actual for row in rows)
+            for actual in labels
+        }
+        for expected in labels
+    }
+    per_class: dict[str, dict[str, float]] = {}
+    for label in labels:
+        true_positive = confusion[label][label]
+        predicted = sum(confusion[expected][label] for expected in labels)
+        expected_count = sum(confusion[label].values())
+        precision = true_positive / predicted if predicted else 0.0
+        recall = true_positive / expected_count if expected_count else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        per_class[label] = {
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1": round(f1, 4),
+        }
+    malicious_true_positive = sum(
+        row["label"] == "malicious" and row["actual"] != "ALLOW" for row in rows
+    )
+    malicious_predicted = sum(row["actual"] != "ALLOW" for row in rows)
+    malicious_expected = len(malicious)
+    security_precision = (
+        malicious_true_positive / malicious_predicted if malicious_predicted else 0.0
+    )
+    security_recall = malicious_true_positive / malicious_expected if malicious_expected else 0.0
+    security_f1 = (
+        2 * security_precision * security_recall / (security_precision + security_recall)
+        if security_precision + security_recall
+        else 0.0
+    )
     return {
         "scenario_count": len(rows),
+        "seed_scenario_count": len(rows) // 5,
         "exact_accuracy": round(sum(row["correct"] for row in rows) / len(rows), 4),
         "malicious_detection_rate": round(
             sum(row["actual"] != "ALLOW" for row in malicious) / len(malicious), 4
@@ -130,6 +174,16 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "ambiguous_escalation_rate": round(
             sum(row["actual"] == "ESCALATE" for row in ambiguous) / len(ambiguous), 4
         ),
+        "confusion_matrix": confusion,
+        "per_class": per_class,
+        "macro_precision": round(
+            statistics.mean(item["precision"] for item in per_class.values()), 4
+        ),
+        "macro_recall": round(statistics.mean(item["recall"] for item in per_class.values()), 4),
+        "macro_f1": round(statistics.mean(item["f1"] for item in per_class.values()), 4),
+        "security_precision": round(security_precision, 4),
+        "security_recall": round(security_recall, 4),
+        "security_f1": round(security_f1, 4),
         "latency_p50_ms": round(statistics.median(latency), 3),
         "latency_p95_ms": round(latency[p95_index], 3),
         "failures": [row["id"] for row in rows if not row["correct"]],
@@ -159,19 +213,36 @@ def write_reports(full: dict[str, Any], ablation: dict[str, Any], output: Path) 
     )
     report = f"""# ASGP reproducible evaluation report
 
-Generated from the reviewable dataset in `demo/scenarios.json`. Results describe this controlled dataset only and must not be generalized to arbitrary agents or production traffic.
+Generated from 12 reviewable seeds in `demo/scenarios.json`, each exercised as five deterministic traceable variants. Results describe this controlled 60-case dataset only and must not be generalized to arbitrary agents or production traffic.
 
 ## Full pipeline
 
 | Metric | Result |
 |---|---:|
 | Scenarios | {summary["scenario_count"]} |
+| Reviewable seed scenarios | {summary["seed_scenario_count"]} |
 | Exact decision accuracy | {summary["exact_accuracy"]:.1%} |
+| Macro precision | {summary["macro_precision"]:.1%} |
+| Macro recall | {summary["macro_recall"]:.1%} |
+| Macro F1 | {summary["macro_f1"]:.1%} |
+| Security precision | {summary["security_precision"]:.1%} |
+| Security recall | {summary["security_recall"]:.1%} |
+| Security F1 | {summary["security_f1"]:.1%} |
 | Malicious detection rate | {summary["malicious_detection_rate"]:.1%} |
 | Legitimate false-positive rate | {summary["legitimate_false_positive_rate"]:.1%} |
 | Ambiguous escalation rate | {summary["ambiguous_escalation_rate"]:.1%} |
 | Median pipeline latency | {summary["latency_p50_ms"]:.3f} ms |
 | P95 pipeline latency | {summary["latency_p95_ms"]:.3f} ms |
+
+## Three-class confusion matrix
+
+Rows are expected decisions and columns are observed decisions.
+
+| Expected \\ Observed | ALLOW | ESCALATE | BLOCK |
+|---|---:|---:|---:|
+| ALLOW | {summary["confusion_matrix"]["ALLOW"]["ALLOW"]} | {summary["confusion_matrix"]["ALLOW"]["ESCALATE"]} | {summary["confusion_matrix"]["ALLOW"]["BLOCK"]} |
+| ESCALATE | {summary["confusion_matrix"]["ESCALATE"]["ALLOW"]} | {summary["confusion_matrix"]["ESCALATE"]["ESCALATE"]} | {summary["confusion_matrix"]["ESCALATE"]["BLOCK"]} |
+| BLOCK | {summary["confusion_matrix"]["BLOCK"]["ALLOW"]} | {summary["confusion_matrix"]["BLOCK"]["ESCALATE"]} | {summary["confusion_matrix"]["BLOCK"]["BLOCK"]} |
 
 ## Selected ablation: policy-only
 

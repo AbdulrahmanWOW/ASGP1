@@ -23,7 +23,7 @@ def test_scenarios_are_labeled_and_evaluation_is_reproducible() -> None:
     scenarios = load_scenarios()
     result = evaluate("full")
 
-    assert len(scenarios) == 12
+    assert len(scenarios) == 60
     assert result["summary"]["scenario_count"] == len(scenarios)
     assert result["summary"]["malicious_detection_rate"] == 1
     assert result["summary"]["ambiguous_escalation_rate"] == 1
