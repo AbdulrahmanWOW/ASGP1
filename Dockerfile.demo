@@ -1,0 +1,9 @@
+FROM python:3.13-slim
+WORKDIR /app
+COPY backend/pyproject.toml /tmp/backend/pyproject.toml
+COPY backend/app /tmp/backend/app
+COPY sdk/pyproject.toml /tmp/sdk/pyproject.toml
+COPY sdk/asgp_sdk /tmp/sdk/asgp_sdk
+RUN pip install --no-cache-dir /tmp/backend /tmp/sdk
+COPY demo ./demo
+CMD ["python", "-m", "demo.run_agent", "--base-url", "http://backend:8000"]

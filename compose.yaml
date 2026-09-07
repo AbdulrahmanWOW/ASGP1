@@ -33,5 +33,14 @@ services:
     depends_on:
       - backend
 
+  demo-agent:
+    profiles: ["demo"]
+    build:
+      context: .
+      dockerfile: Dockerfile.demo
+    depends_on:
+      - backend
+    command: ["python", "-m", "demo.run_agent", "--base-url", "http://backend:8000"]
+
 volumes:
   asgp_postgres_data:
