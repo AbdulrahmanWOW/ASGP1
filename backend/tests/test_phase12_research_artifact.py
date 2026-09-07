@@ -1,13 +1,17 @@
 import json
 from pathlib import Path
 
-from demo.evaluate import FRONTEND_REPORT_PATH, evaluate, write_reports
+import demo.evaluate as evaluation
 
 
-def test_evaluation_publishes_dashboard_research_artifact(tmp_path: Path) -> None:
-    full, policy_only = evaluate("full"), evaluate("policy_only")
-    write_reports(full, policy_only, tmp_path)
-    dashboard = json.loads(FRONTEND_REPORT_PATH.read_text(encoding="utf-8"))
+def test_evaluation_publishes_dashboard_research_artifact(
+    tmp_path: Path, monkeypatch
+) -> None:
+    frontend_report = tmp_path / "frontend" / "evaluation-results.json"
+    monkeypatch.setattr(evaluation, "FRONTEND_REPORT_PATH", frontend_report)
+    full, policy_only = evaluation.evaluate("full"), evaluation.evaluate("policy_only")
+    evaluation.write_reports(full, policy_only, tmp_path / "report")
+    dashboard = json.loads(frontend_report.read_text(encoding="utf-8"))
 
     assert dashboard["full"]["summary"]["scenario_count"] == 60
     assert dashboard["full"]["summary"]["confusion_matrix"]

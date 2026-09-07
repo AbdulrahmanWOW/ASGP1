@@ -1,6 +1,6 @@
 # ASGP Implementation Roadmap
 
-The realistic implementation is divided into **9 phases**. Each phase must finish with working tests and documentation before the next phase begins.
+The realistic implementation is divided into **13 phases**. Each phase finishes with working tests and documentation before the next phase begins.
 
 ## Phase 0 — Foundation and contracts
 
@@ -185,6 +185,30 @@ The realistic implementation is divided into **9 phases**. Each phase must finis
 - Results include false positives and failures, not only successful detections.
 - No result depends on real private user data.
 
+## Phase 9 — SDK-integrated demo agent
+
+**Status:** Complete (2026-09-08)
+
+Connect controlled tools to the real Python SDK and provide a one-command Docker profile that demonstrates `ALLOW`, `ESCALATE`, and `BLOCK` before execution.
+
+## Phase 10 — Expanded evaluation metrics
+
+**Status:** Complete (2026-09-08)
+
+Expand the controlled evaluation to 60 traceable cases and publish three-class confusion, per-class and macro precision/recall/F1, security metrics, latency, and ablation results.
+
+## Phase 11 — Content-ingress quarantine
+
+**Status:** Complete (2026-09-08)
+
+Scan tool-returned text before agent consumption. Release clean content and fail closed with `ContentQuarantined` while omitting suspicious raw content from the response.
+
+## Phase 12 — Research dashboard
+
+**Status:** Complete (2026-09-08)
+
+Expose the generated evaluation artifact in the existing dashboard with metrics, confusion matrix, ablation comparisons, and honest limitations.
+
 ## Phase dependencies
 
 ```text
@@ -205,6 +229,14 @@ Phase 6 Audit & Metrics
 Phase 7 Dashboard
    ↓
 Phase 8 Evaluation & Delivery
+   ↓
+Phase 9 Integrated Demo Agent
+   ↓
+Phase 10 Expanded Evaluation
+   ↓
+Phase 11 Content Ingress
+   ↓
+Phase 12 Research Dashboard
 ```
 
 ## Suggested ownership for a four-person team

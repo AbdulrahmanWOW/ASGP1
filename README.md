@@ -57,6 +57,9 @@ User Intent → AI Agent → ASGP SDK → Security Pipeline
 - Explainable prompt-injection and multi-step behavioral signals.
 - Responsive React dashboard for sessions, risk, approvals, events, and audit status.
 - Controlled attack lab with reproducible labeled evaluation and ablation.
+- SDK-integrated demo agent proving `ALLOW`, `BLOCK`, and `ESCALATE` before execution.
+- Content-ingress quarantine before untrusted text reaches agent context.
+- Research dashboard with confusion matrix, F1 metrics, and ablation evidence.
 - Docker Compose local deployment.
 
 ## Quick start with Docker
@@ -78,6 +81,12 @@ Open:
 - Dashboard: [http://127.0.0.1:4173](http://127.0.0.1:4173)
 - API documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
+To run the one-shot SDK-integrated demonstration as part of the stack:
+
+```powershell
+docker-compose --profile demo up --build
+```
+
 For native Python and Node.js setup, see the [deployment guide](docs/DEPLOYMENT.md).
 
 ## Development verification
@@ -96,7 +105,7 @@ pnpm build
 pnpm lint
 ```
 
-At the documented delivery point, all **57 automated tests** and frontend production checks pass.
+At the documented delivery point, all **63 automated tests** and frontend production checks pass.
 
 ## Reproducible evaluation
 
@@ -104,11 +113,14 @@ At the documented delivery point, all **57 automated tests** and frontend produc
 .\.venv\Scripts\python.exe -m demo.evaluate
 ```
 
-The controlled 12-scenario dataset currently demonstrates:
+The controlled evaluation uses 12 reviewable seeds exercised as 60 deterministic traceable cases:
 
 | Metric | Result |
 |---|---:|
 | Exact decision accuracy | 91.7% |
+| Macro precision | 95.2% |
+| Macro recall | 91.7% |
+| Macro F1 | 92.7% |
 | Malicious detection rate | 100% |
 | Ambiguous escalation rate | 100% |
 | Legitimate false-positive rate | 25% |
@@ -139,7 +151,7 @@ docs/         Architecture, phases, defense material, and deployment guides
 
 ### Delivery and presentation
 
-- [Phase 0–8 delivery documents](docs/ROADMAP.md)
+- [Phase 0–12 delivery documents](docs/ROADMAP.md)
 - [Local deployment](docs/DEPLOYMENT.md)
 - [Committee demo script](docs/DEMO_SCRIPT.md)
 - [Presentation outline](docs/PRESENTATION_OUTLINE.md)
@@ -169,4 +181,4 @@ ASGP is an integration-boundary control, not a universal agent sandbox. A valid 
 
 ## Project status
 
-All roadmap phases from foundation through dashboard, attack lab, evaluation, and delivery are complete. High-value future work includes a fully orchestrated demo agent, MCP/framework adapters, centralized credential-isolated tool execution, larger datasets, and production identity and access controls.
+All roadmap phases from foundation through the integrated demo agent, ingress quarantine, expanded evaluation, research dashboard, and delivery are complete. High-value future work includes MCP/framework-specific adapters, centralized credential-isolated tool execution, independent real-world datasets, and production identity and access controls.

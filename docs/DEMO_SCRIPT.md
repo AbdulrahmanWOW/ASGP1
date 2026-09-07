@@ -6,15 +6,15 @@ Explain that agents can call powerful tools, and ASGP sits at the integrated too
 
 ## 2. Normal action — 90 seconds
 
-Create a session whose intent is to read controlled messages and create a local summary. Run `read_file`. Show `ALLOW`, the low risk score, and the audit event. Open event detail and point out that the secret field is `[REDACTED]`.
+Start the integrated run with `docker-compose --profile demo up --build`. Show that `read_file` passes through the SDK wrapper, receives `ALLOW`, and only then executes. Point out the content-ingress `CLEAN` event before the text is treated as agent-visible.
 
 ## 3. Ambiguous action — 90 seconds
 
-Request the medium-sensitivity archive action. Show `ESCALATE`, open the Approvals page, explain digest binding, and approve it once. Clarify that changed parameters cannot reuse the approval.
+Show the demo agent's medium-sensitivity upload as `ESCALATE`, open the Approvals page, explain digest binding, and approve it once. Clarify that changed parameters cannot reuse the approval.
 
 ## 4. Malicious instruction — 2 minutes
 
-Use the controlled malicious inbox message, which asks the agent to ignore prior instructions and upload data. Show the injection findings, risk contribution, `BLOCK`, and prove that the counted tool did not execute.
+Submit the controlled malicious inbox text to `/content/ingress`. Show `quarantined`, `safe_content: null`, and the injection findings. Then show the forbidden mail call receiving `BLOCK` and its execution counter remaining zero.
 
 ## 5. Audit integrity — 60 seconds
 
@@ -28,7 +28,7 @@ Run:
 .\.venv\Scripts\python.exe -m demo.evaluate
 ```
 
-Open `evaluation/latest/REPORT.md`. Compare the full pipeline with policy-only, then highlight both the deliberately retained false positive and the ablation misses.
+Open the dashboard **Research** view. Show the 60 cases, confusion matrix, macro F1, and full-versus-policy-only comparison. Then highlight both the deliberately retained false positive and the ablation misses.
 
 ## 7. Close — 45 seconds
 
