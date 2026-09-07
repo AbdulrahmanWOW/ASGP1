@@ -1,0 +1,1023 @@
+آه، ودي أحسن خطوة قبل ما Codex يبدأ يكتب أي كود: نعمل **Master Implementation Plan + Prompt** ونثبت الـarchitecture والـdiagrams الأول، بحيث مايبقاش بيبني المشروع عشوائي.
+
+أنا هبني الخطة على الـASGP specification نفسها: FastAPI backend، React dashboard، PostgreSQL، Redis، Ed25519، Python SDK، والـsecurity pipeline المذكور في الدوكومنت. 
+
+## 1. الشكل النهائي اللي نخلي Codex يبنيه
+
+مش عايزه يحاول يعمل الـ10 Layers مرة واحدة. نخليه يبني vertical slices، وكل Phase لازم تشتغل وتتعملها tests قبل اللي بعدها.
+
+```text
+                         ┌─────────────┐
+                         │    USER     │
+                         └──────┬──────┘
+                                │
+                                ▼
+                     ┌───────────────────┐
+                     │   INTENT ANCHOR   │
+                     │ Scope/Permissions │
+                     └─────────┬─────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │      AI AGENT       │
+                    │ Orchestrator/Subs   │
+                    └──────────┬──────────┘
+                               │
+                          TOOL CALL
+                               │
+                               ▼
+              ┌────────────────────────────────┐
+              │             ASGP               │
+              │                                │
+              │  1. Signature Verification     │
+              │              ↓                 │
+              │  2. Policy Engine              │
+              │              ↓                 │
+              │  3. Intent Alignment           │
+              │              ↓                 │
+              │  4. Injection/Risk Analysis    │
+              │              ↓                 │
+              │  5. Behavioral Analysis        │
+              │              ↓                 │
+              │  6. Trust Engine               │
+              │              ↓                 │
+              │  7. Decision Engine            │
+              └──────────────┬─────────────────┘
+                             │
+             ┌───────────────┼────────────────┐
+             ▼               ▼                ▼
+           ALLOW          ESCALATE          BLOCK
+             │                                │
+             ▼                                ▼
+           TOOL                       ACTIVE RESPONSE
+
+                             │
+                             ▼
+                     ┌──────────────┐
+                     │  AUDIT LOG   │
+                     │ Hash Chained │
+                     └──────┬───────┘
+                            ▼
+                     ┌──────────────┐
+                     │  DASHBOARD   │
+                     └──────────────┘
+```
+
+ده يحافظ على الـcore architecture الموجودة في الـspec، لكن بشكل realistic implementation. 
+
+## 2. Implementation Roadmap لـCodex
+
+أنا أقترح **15 Phases** بدل تقسيمة الأربع شهور العامة الموجودة في الوثيقة، لأن دي أنسب للـcoding agent.
+
+| Phase | نبني إيه؟                          | النتيجة                   |
+| ----- | ---------------------------------- | ------------------------- |
+| 0     | Repository + Architecture          | Skeleton كامل             |
+| 1     | Docker + FastAPI + DB + Redis      | Infrastructure شغالة      |
+| 2     | Models + Session API               | Sessions شغالة            |
+| 3     | Intent Anchor                      | Intent + permissions      |
+| 4     | SDK + Tool Interceptor             | نقدر نمسك tool calls      |
+| 5     | Ed25519 Signing                    | Chain verification        |
+| 6     | Policy Engine                      | Hard security rules       |
+| 7     | AI Provider Interface              | Model-independent AI      |
+| 8     | Intent Alignment                   | Semantic scoring          |
+| 9     | Injection Detector                 | Retrieved-content defense |
+| 10    | Behavioral + Trust Engine          | Session-level detection   |
+| 11    | Decision + Active Response         | ALLOW/BLOCK/ESCALATE      |
+| 12    | Tamper-Evident Audit               | Hash-chained logs         |
+| 13    | React Dashboard                    | Visualization             |
+| 14    | Demo + Attack Dataset + Evaluation | Graduation-ready          |
+
+وده في رأيي أفضل من إن Codex يسمع "build ASGP" ويطلع 70 file نصهم placeholders.
+
+---
+
+# 3. الـMaster Prompt لـCodex
+
+اديله الـPDF مع البرومبت ده. ده يكون الـ**Project Constitution** بتاعه، وبعده هنديله prompt منفصل لكل Phase.
+
+```text
+You are the lead software engineer and security architect responsible for implementing my graduation project:
+
+ASGP — Agent Security Governance Platform.
+
+I have provided the full ASGP specification document. Treat that document as the product and research specification, but DO NOT blindly implement every idea exactly as written.
+
+Your responsibility is to turn the research vision into a realistic, secure, testable graduation-project implementation.
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Build ASGP as a security middleware layer between AI agents and their tools.
+
+ASGP must intercept security-relevant tool calls BEFORE execution and decide whether the requested action should be:
+
+ALLOW
+BLOCK
+ESCALATE
+or TERMINATE
+
+The decision must be based on multiple independent security signals including:
+
+1. User Intent Anchor
+2. Cryptographic provenance/signing verification
+3. Policy enforcement
+4. AI-based intent alignment
+5. Prompt injection detection for retrieved content
+6. Session behavioral analysis
+7. Trust score
+8. Decision aggregation
+9. Active response
+10. Tamper-evident audit logging
+
+The system must provide a dashboard explaining decisions in both technical and plain language.
+
+==================================================
+IMPORTANT ENGINEERING PRINCIPLE
+==================================================
+
+The specification represents the complete research vision.
+
+Not every theoretical feature needs to be implemented literally.
+
+When a specification requirement is:
+
+- technically unrealistic,
+- insecure,
+- excessively complex for a graduation project,
+- dependent on unavailable infrastructure,
+- or impossible to guarantee,
+
+DO NOT fake the implementation.
+
+Instead:
+
+1. identify the limitation,
+2. explain it,
+3. implement the strongest realistic version,
+4. document the difference between the research vision and implemented MVP.
+
+Never claim a security property that the implementation does not actually provide.
+
+==================================================
+CORE ARCHITECTURE
+==================================================
+
+The primary execution path is:
+
+User
+→ Intent Anchor
+→ AI Agent
+→ Tool Call
+→ ASGP Interceptor
+→ Signing Verification
+→ Policy Engine
+→ Intent Alignment
+→ Security Analysis
+→ Behavioral Analysis
+→ Trust Engine
+→ Decision Engine
+→ ALLOW / BLOCK / ESCALATE / TERMINATE
+→ Tool Execution if permitted
+→ Audit Log
+→ Dashboard
+
+ASGP governs actions, not internal LLM reasoning.
+
+==================================================
+TECHNOLOGY STACK
+==================================================
+
+Backend:
+Python
+FastAPI
+Pydantic
+SQLAlchemy
+
+Database:
+PostgreSQL
+
+Session/cache:
+Redis
+
+Cryptography:
+Python cryptography
+Ed25519
+SHA-256
+
+Frontend:
+React
+Tailwind CSS
+
+Communication:
+REST API
+WebSocket where real-time dashboard updates are useful
+
+Deployment:
+Docker
+Docker Compose
+
+Testing:
+pytest
+
+Agent integration:
+Python SDK
+
+AI:
+Use a provider abstraction.
+
+Do NOT tightly couple ASGP to Claude or any single model.
+
+Create an interface similar to:
+
+AIProvider
+
+with possible implementations:
+
+OpenAIProvider
+AnthropicProvider
+GeminiProvider
+LocalProvider
+MockProvider
+
+The security pipeline must remain usable with MockProvider during automated tests.
+
+==================================================
+SECURITY REQUIREMENTS
+==================================================
+
+ASGP itself must follow secure engineering practices.
+
+Validate all API input.
+
+Never execute arbitrary tool calls received from the API.
+
+Never use eval() or exec() for policy evaluation.
+
+Never store plaintext private keys in PostgreSQL.
+
+Never log secrets, API keys, authentication tokens, or complete sensitive content unnecessarily.
+
+Use cryptographically secure random identifiers/nonces.
+
+Use canonical serialization before signing.
+
+Implement replay protection.
+
+Validate timestamps.
+
+Implement session isolation.
+
+Fail closed for cryptographic verification failures.
+
+Avoid using LLM output directly as an authorization decision.
+
+AI scoring is one security signal.
+
+Hard security policies and cryptographic failures must override AI recommendations.
+
+==================================================
+CRYPTOGRAPHIC MODEL
+==================================================
+
+Use Ed25519 for signatures.
+
+The practical MVP should use ASGP-managed session identities for registered agents participating through the SDK.
+
+Do not pretend that ASGP can cryptographically authenticate arbitrary external agents that never integrated with ASGP.
+
+Each signed action should bind at minimum:
+
+session_id
+agent_id
+tool name
+normalized parameters or their digest
+intent anchor hash
+parent event/instruction hash when applicable
+timestamp
+nonce
+scope
+sequence number where useful
+
+Implement:
+
+signature verification
+chain verification
+scope non-escalation
+replay detection
+timestamp validation
+
+Clearly separate:
+
+AUTHENTICITY / PROVENANCE
+
+from:
+
+SEMANTIC SAFETY.
+
+A valid signature DOES NOT prove that an instruction is safe.
+
+A legitimate compromised agent may still produce a valid signature.
+
+Intent alignment, policy enforcement, injection detection, and behavioral analysis handle semantic security.
+
+==================================================
+INTENT ANCHOR
+==================================================
+
+At session creation:
+
+1. capture the original user intent,
+2. derive structured permissions,
+3. show/store the resulting scope,
+4. generate a canonical representation,
+5. hash/sign the anchor,
+6. associate it with the session.
+
+Example permissions:
+
+allowed_tools
+forbidden_tools
+resource boundaries
+external communication restrictions
+maximum agent depth
+
+AI may suggest permissions, but security-sensitive permission expansion must not silently occur.
+
+==================================================
+TOOL INTERCEPTION SDK
+==================================================
+
+Create a Python SDK that allows developers to wrap tools.
+
+Conceptually:
+
+asgp = ASGP(...)
+session = asgp.start_session(...)
+
+tools = asgp.wrap_tools(
+    session,
+    [read_email, write_file, send_email]
+)
+
+The wrapper must:
+
+capture the tool call
+normalize parameters
+send verification request to ASGP
+wait for decision
+
+If ALLOW:
+execute original tool
+
+If BLOCK:
+do not execute it
+
+If ESCALATE:
+pause execution and require approval
+
+The SDK must make bypass boundaries explicit:
+ASGP can govern tools routed through the ASGP wrapper/gateway; it cannot guarantee interception of arbitrary direct tool execution outside that integration boundary.
+
+==================================================
+POLICY ENGINE
+==================================================
+
+Policies must use a safe structured representation.
+
+DO NOT evaluate natural-language policies directly.
+
+Flow:
+
+Natural language
+→ AI proposes structured policy
+→ validation
+→ user confirmation
+→ stored structured policy
+→ deterministic evaluation
+
+Support operators such as:
+
+equals
+not_equals
+contains
+in
+not_in
+matches
+greater_than
+less_than
+
+Start with simple deterministic policies.
+
+==================================================
+AI INTENT ALIGNMENT
+==================================================
+
+Evaluate semantic alignment between:
+
+original intent
+derived permissions
+current tool
+parameters
+recent session history
+
+Return structured output:
+
+score
+reason
+risk_factors
+
+The AI model MUST NOT directly decide authorization.
+
+Its result is passed into the Decision Engine.
+
+==================================================
+PROMPT INJECTION DETECTION
+==================================================
+
+Retrieved external content can be scanned before being exposed to an agent.
+
+Support detection signals for:
+
+direct instruction override
+authority impersonation
+goal redirection
+encoded/obfuscated instructions
+suspicious instruction-like content
+mixed legitimate and malicious content
+
+Do not claim perfect prompt injection detection.
+
+Store confidence and evidence.
+
+==================================================
+BEHAVIORAL ENGINE
+==================================================
+
+For the MVP, use explainable stateful detection instead of pretending to have a trained ML IDS.
+
+Track:
+
+tool history
+resources accessed
+external calls
+data volume
+scope expansion
+tool sequences
+blocked actions
+alignment history
+
+Detect patterns including:
+
+scope creep
+reconnaissance
+data staging
+unusual volume
+suspicious tool sequences
+
+==================================================
+TRUST ENGINE
+==================================================
+
+Maintain a bounded trust/risk state per session.
+
+The score must be deterministic and explainable.
+
+Every score modification must include:
+
+previous score
+delta
+new score
+reason
+
+Avoid arbitrary hidden score changes.
+
+==================================================
+DECISION ENGINE
+==================================================
+
+The Decision Engine combines all security signals.
+
+Hard failures take priority.
+
+Examples:
+
+invalid cryptographic chain
+→ BLOCK
+
+explicit policy block
+→ BLOCK
+
+confirmed replay
+→ BLOCK
+
+high-confidence dangerous injection associated with action
+→ BLOCK or ESCALATE according to configured policy
+
+Otherwise evaluate:
+
+intent alignment
+behavioral signals
+trust score
+risk classification
+
+Return a structured Decision object.
+
+==================================================
+AUDIT LOG
+==================================================
+
+Every security decision must generate an audit event.
+
+Implement tamper-evident hash chaining.
+
+Each entry should contain:
+
+event ID
+session ID
+timestamp
+agent ID
+tool
+safe/redacted parameter representation
+security signals
+trust score before/after
+decision
+reason
+previous entry hash
+entry hash
+
+Do not call the log "tamper-proof."
+
+Call it "tamper-evident."
+
+Provide a verification function capable of detecting broken history.
+
+==================================================
+DASHBOARD
+==================================================
+
+Build three logical views:
+
+USER VIEW
+
+Simple security status.
+Plain-language explanations.
+Blocked actions.
+Approval requests.
+
+DEVELOPER VIEW
+
+Tool calls.
+Agent chain.
+Alignment scores.
+Trust score.
+Policies.
+Latency.
+Errors.
+
+SECURITY / RESEARCH VIEW
+
+Detailed security signals.
+Signature verification.
+Injection findings.
+Behavioral anomalies.
+Audit-chain status.
+Attack scenario results.
+
+==================================================
+TESTING
+==================================================
+
+Every phase requires tests.
+
+Important scenarios:
+
+legitimate tool call
+forbidden tool
+scope escalation
+invalid signature
+modified signed payload
+replayed request
+expired request
+prompt injection
+intent drift
+reconnaissance sequence
+data staging
+external exfiltration attempt
+false-positive legitimate workflow
+
+Use MockProvider for deterministic AI tests.
+
+Never make unit tests depend on paid external APIs.
+
+==================================================
+EVALUATION
+==================================================
+
+Prepare the architecture so the graduation research can measure:
+
+True Positive Rate
+False Positive Rate
+Precision
+Recall
+F1 score
+latency per layer
+total verification latency
+trust-score behavior
+attack detection rate
+
+Record timing for individual pipeline stages.
+
+==================================================
+IMPLEMENTATION PROCESS
+==================================================
+
+DO NOT implement the entire project immediately.
+
+Work phase-by-phase.
+
+Before every phase:
+
+1. inspect the existing repository,
+2. summarize current implementation,
+3. identify dependencies,
+4. define acceptance criteria,
+5. propose files that need creation/modification.
+
+Then implement ONLY that phase.
+
+After implementation:
+
+1. run tests,
+2. run lint/static checks if configured,
+3. verify integration,
+4. report changed files,
+5. report tests,
+6. report known limitations,
+7. update project documentation.
+
+Do not proceed to the next phase until the current phase is working.
+
+==================================================
+PHASES
+==================================================
+
+PHASE 0
+Architecture and repository foundation
+
+PHASE 1
+FastAPI + PostgreSQL + Redis + Docker
+
+PHASE 2
+Session management and core domain models
+
+PHASE 3
+Intent Anchor
+
+PHASE 4
+Python SDK and tool interception
+
+PHASE 5
+Ed25519 signing/provenance chain
+
+PHASE 6
+Deterministic Policy Engine
+
+PHASE 7
+AI provider abstraction
+
+PHASE 8
+Intent Alignment Scorer
+
+PHASE 9
+Prompt Injection Detector
+
+PHASE 10
+Behavioral Analyzer + Trust Engine
+
+PHASE 11
+Decision Engine + Active Response
+
+PHASE 12
+Tamper-Evident Audit Log
+
+PHASE 13
+React Dashboard + WebSocket updates
+
+PHASE 14
+Demo agents, attack scenarios, dataset and evaluation
+
+==================================================
+STARTING INSTRUCTION
+==================================================
+
+Start with PHASE 0 only.
+
+Read the ASGP specification first.
+
+Then inspect the repository.
+
+Do not implement security layers yet.
+
+Produce:
+
+1. architecture assessment,
+2. realistic MVP boundary,
+3. threat model,
+4. repository structure,
+5. domain model,
+6. API contract proposal,
+7. implementation phases,
+8. acceptance criteria for Phase 0,
+9. contradictions or unrealistic assumptions found in the specification.
+
+After that, implement only the approved Phase 0 foundation.
+
+Do not proceed to Phase 1 automatically.
+```
+
+## 4. أهم قاعدة مع Codex
+
+أنا أنصح **ما تديلوش الـ15 Phase مرة واحدة وتقوله نفّذ**.
+
+خليه ياخد الـMaster Prompt فوق، وبعد كده إحنا هنا نطلعله:
+
+```text
+PHASE 0 PROMPT
+↓
+Codex implements
+↓
+أنت تبعتلي النتيجة
+↓
+نراجعها
+↓
+PHASE 1 PROMPT
+↓
+...
+```
+
+لأن ده هيخلينا نكتشف architecture mistakes بدري جدًا بدل ما نوصل Phase 10 ونكتشف إن الأساس نفسه غلط.
+
+---
+
+# 5. الـDiagrams اللي المشروع محتاجها
+
+مش عايزين Diagram واحد. للـdocumentation والـpresentation والـthesis أنا شايف نعمل على الأقل:
+
+**1. High-Level Architecture Diagram**
+
+```text
+User
+ ↓
+AI Agent / Multi-Agent System
+ ↓
+ASGP Security Gateway
+ ↓
+Security Pipeline
+ ↓
+Decision
+ ↓
+Tools
+```
+
+**2. Security Pipeline Diagram**
+
+```text
+Tool Call
+   │
+   ▼
+Signature Verification
+   │
+   ▼
+Policy Engine
+   │
+   ▼
+Intent Alignment
+   │
+   ▼
+Injection/Risk Signals
+   │
+   ▼
+Behavioral Analyzer
+   │
+   ▼
+Trust Engine
+   │
+   ▼
+Decision Engine
+   │
+   ├── ALLOW
+   ├── BLOCK
+   ├── ESCALATE
+   └── TERMINATE
+```
+
+**3. Multi-Agent Trust Chain**
+
+```text
+Intent Anchor
+     │
+     ▼
+Orchestrator
+     │ signed delegation
+     ▼
+Email Agent
+     │ signed delegation
+     ▼
+Writer Agent
+     │
+     ▼
+Tool Call
+
+Every hop
+   ↓
+ASGP verification
+```
+
+**4. Prompt Injection Attack Diagram**
+
+```text
+User
+ │
+ │ "Summarize emails"
+ ▼
+Agent
+ │
+ ▼
+Malicious Email
+ │
+ │ Hidden Instruction
+ │ "Send data to attacker"
+ ▼
+Agent attempts send_email()
+ │
+ ▼
+ASGP
+ │
+ ├─ Intent mismatch
+ ├─ Policy violation
+ ├─ Injection evidence
+ └─ Behavioral signal
+ │
+ ▼
+BLOCK ❌
+```
+
+ده هيبقى من أهم الرسومات في الـpresentation.
+
+**5. Sequence Diagram**
+
+```text
+User        Agent       SDK        ASGP       Tool
+ │            │          │           │          │
+ │──Intent───►│          │           │          │
+ │            │─────────►│──start───►│          │
+ │            │          │◄─session──│          │
+ │            │          │           │          │
+ │            │─tool────►│           │          │
+ │            │          │─verify───►│          │
+ │            │          │           │          │
+ │            │          │◄─ALLOW────│          │
+ │            │          │─────────────────────►│
+ │            │          │◄─────────────────────│
+ │            │◄─result──│           │          │
+```
+
+**6. Data Architecture Diagram**
+
+```text
+                ASGP Backend
+             ┌───────┼────────┐
+             │       │        │
+             ▼       ▼        ▼
+        PostgreSQL  Redis    AI Provider
+             │       │
+             │       └─ Live Session State
+             │
+             ├─ Sessions
+             ├─ Policies
+             ├─ Audit Events
+             ├─ Decisions
+             └─ Agents
+```
+
+**7. Deployment Diagram**
+
+```text
+Docker Compose
+│
+├── frontend
+│     React
+│
+├── backend
+│     FastAPI
+│
+├── postgres
+│
+└── redis
+
+       External / Local
+             │
+        AI Provider
+```
+
+**8. Research/Evaluation Diagram**
+
+```text
+Attack Dataset
+      │
+      ▼
+Demo Agents
+      │
+      ▼
+     ASGP
+      │
+      ▼
+Experiment Runner
+      │
+ ┌────┼────┬──────┐
+ ▼    ▼    ▼      ▼
+TPR  FPR   F1   Latency
+```
+
+---
+
+# 6. والـUI Design نفسه
+
+أنا متخيل الـDashboard يبقى security/SOC style لكن clean مش مبالغ فيه.
+
+الصفحة الرئيسية مثلًا:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ ASGP                         ● System Healthy     Session ▼ │
+├──────────────┬──────────────────────────────────────────────┤
+│              │                                              │
+│ Dashboard    │   SESSION SECURITY                           │
+│ Sessions     │                                              │
+│ Tool Calls   │   Trust Score        82 / 100                │
+│ Agents       │   ████████████████░░░░                       │
+│ Policies     │                                              │
+│ Audit Log    │   47 Actions    2 Blocked    1 Alert         │
+│ Research     │                                              │
+│              │──────────────────────────────────────────────│
+│              │                                              │
+│              │   AGENT GRAPH                                │
+│              │                                              │
+│              │   USER                                       │
+│              │     ↓                                        │
+│              │   ORCHESTRATOR                               │
+│              │    ↙       ↘                                 │
+│              │ EMAIL       WRITER                           │
+│              │               │                              │
+│              │             ❌ send_email                    │
+│              │                                              │
+│              │──────────────────────────────────────────────│
+│              │ RECENT SECURITY EVENTS                       │
+│              │                                              │
+│              │ ✅ read_email       ALLOW      0.97          │
+│              │ ✅ write_file       ALLOW      0.91          │
+│              │ ❌ send_email       BLOCK      0.04          │
+│              │ ⚠ browse_web        ESCALATE   0.51          │
+└──────────────┴──────────────────────────────────────────────┘
+```
+
+ولما تضغط على الـblocked `send_email`:
+
+```text
+┌────────────────────────────────────────────┐
+│ BLOCKED ACTION                         ❌  │
+│                                            │
+│ send_email()                               │
+│                                            │
+│ Decision                     BLOCK         │
+│ Intent Alignment             0.04          │
+│ Signature                    VALID         │
+│ Policy                       VIOLATION     │
+│ Injection Evidence           HIGH          │
+│ Trust                        82 → 57        │
+│                                            │
+│ Why was this blocked?                      │
+│                                            │
+│ Your assistant attempted to send data      │
+│ to an external recipient, but your         │
+│ original request only authorized reading   │
+│ emails and creating a local summary.       │
+│                                            │
+│ ────────────────────────────────────────   │
+│ Technical Details                          │
+│ Policy: NO_EXTERNAL_EMAIL                  │
+│ Event: evt_92ad...                         │
+│ Audit Chain: VERIFIED ✓                    │
+└────────────────────────────────────────────┘
+```
+
+ده يخلي اللجنة **تشوف المشروع بدل ما نفضل نشرحه بالكلام**.
+
+والجميل إن الدوكومنت نفسه بالفعل بيحدد User View وDeveloper View ومثال للـagent graph والـblocked actions، فإحنا بنطور نفس الـconcept مش بنخترع UI بعيد عن الـspec. 
+
+## 7. الخطوة اللي أنصح نعملها دلوقتي
+
+قبل ما تبعت حتى الـMaster Prompt لـCodex، نعمل **ASGP Architecture Pack v1** فعلي: High-Level Architecture + Security Pipeline + Multi-Agent Signing Chain + Prompt-Injection Attack Flow + Sequence Diagram + Deployment Diagram + Dashboard mockup.
+
+وبعدها نبدأ **Phase 0 مع Codex**، وكل Phase هكتبلك الـprompt بتاعها والـacceptance criteria وإحنا نراجع ناتج Codex مع بعض.

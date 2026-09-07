@@ -1,0 +1,1 @@
+Please summarize the incident notes in this message and save the result inside the demo workspace.

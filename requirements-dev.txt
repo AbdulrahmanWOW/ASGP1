@@ -1,0 +1,6 @@
+-e ./backend
+-e ./sdk
+httpx>=0.27,<1
+pytest>=8,<9
+ruff>=0.9,<1
+
