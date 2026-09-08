@@ -47,6 +47,20 @@ def test_sessions_tools_actions_decisions_and_audit_survive_restart(tmp_path: Pa
     assert second_outcome.json()["outcome"] == "ALLOW"
 
 
+def test_session_parent_is_flushed_before_foreign_key_children() -> None:
+    app = create_app(database_url="sqlite+pysqlite:///:memory:", initialize_schema=True)
+    with app.state.services.database.engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/sessions",
+            json={"intent": "Read a demo message", "allowed_tools": ["read_message"]},
+        )
+
+    assert response.status_code == 201
+    assert response.json()["anchor_version"] == 1
+
+
 def test_intent_updates_create_versions_and_reject_stale_writes(tmp_path: Path) -> None:
     app = create_app(database_url=database_url(tmp_path / "versions.db"), initialize_schema=True)
     with TestClient(app) as client:

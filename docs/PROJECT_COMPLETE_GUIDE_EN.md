@@ -226,7 +226,7 @@ The market includes prompt shields, cloud guardrails, and broad guardrail framew
 ## 12. Project status
 
 - Core architecture, backend, SDK, dashboard, attack lab, and evaluation are complete.
-- 57 automated tests passed at the documented delivery point.
+- 64 automated tests passed at the documented delivery point.
 - Frontend production build and lint pass.
 - The system is a strong, defensible graduation prototype.
 - The highest-value next additions are a fully orchestrated demo agent, MCP/framework adapters, and centralized credential-isolated tool execution.

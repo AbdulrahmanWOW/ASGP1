@@ -231,7 +231,7 @@ Ed25519 والتوقيع والـnonce والـtimestamp والـexpiry والـ
 
 - الـCore architecture مكتملة.
 - Backend وSDK وDashboard وAttack Lab تعمل.
-- 57 اختبار automated tests ناجحة وقت التسليم.
+- 64 اختبار automated tests ناجحة وقت التسليم.
 - Frontend production build وlint ناجحان.
 - المشروع جاهز كمشروع تخرج قوي.
 - أهم تطوير إضافي للعرض أو المنتج هو Demo Agent متكامل ثم MCP/Framework adapters وcentral tool execution لمنع الـBypass.

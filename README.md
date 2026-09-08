@@ -105,7 +105,7 @@ pnpm build
 pnpm lint
 ```
 
-At the documented delivery point, all **63 automated tests** and frontend production checks pass.
+At the documented delivery point, all **64 automated tests** and frontend production checks pass.
 
 ## Reproducible evaluation
 

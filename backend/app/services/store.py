@@ -53,14 +53,14 @@ class DatabaseStore:
     def create_session(self, request: SessionCreate) -> Session:
         now, session_id = datetime.now(UTC), uuid4()
         with self.database.session() as db:
-            db.add(
-                SessionRecord(
-                    id=str(session_id),
-                    status=SessionStatus.ACTIVE.value,
-                    created_at=now,
-                    risk_score=0,
-                )
+            session_record = SessionRecord(
+                id=str(session_id),
+                status=SessionStatus.ACTIVE.value,
+                created_at=now,
+                risk_score=0,
             )
+            db.add(session_record)
+            db.flush()
             db.add(self._anchor_record(session_id, 1, request, now))
             db.add(
                 AuditHeadRecord(
