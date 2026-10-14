@@ -25,6 +25,9 @@ class AuditEvent(BaseModel):
     finding_codes: tuple[str, ...] = ()
     stage_timings_ms: dict[str, float] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    intent_anchor_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    decided_by: str | None = None
+    actor: str | None = None
 
 
 class AuditVerification(BaseModel):

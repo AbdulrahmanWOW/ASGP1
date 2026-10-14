@@ -24,6 +24,7 @@ def build_container(
     initialize_schema: bool = False,
     approval_ttl_seconds: int = 300,
     ai_provider: AIProvider | None = None,
+    max_blocks_per_session: int = 5,
 ) -> ServiceContainer:
     database = Database(database_url)
     if initialize_schema:
@@ -38,5 +39,6 @@ def build_container(
         InjectionDetector(),
         BehavioralAnalyzer(),
         approval_ttl_seconds,
+        max_blocks_per_session=max_blocks_per_session,
     )
     return ServiceContainer(database=database, store=store, governance=governance)

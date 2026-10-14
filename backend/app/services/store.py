@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.canonical import audit_entry_hash, intent_anchor_digest
 from app.db.models import (
@@ -29,7 +29,7 @@ from app.domain.policies import Policy, PolicyCreate
 from app.domain.risk import RiskChange
 from app.domain.security import FindingKind, FindingSeverity, SecurityFinding
 from app.domain.sessions import IntentAnchorUpdate, Session, SessionCreate, SessionStatus
-from app.domain.tools import ToolDefinition, ToolSensitivity
+from app.domain.tools import ToolCategory, ToolDefinition, ToolSensitivity
 from app.services.behavior import Activity
 from app.services.risk import RiskAssessment
 
@@ -126,12 +126,13 @@ class DatabaseStore:
             raise RuntimeError("Updated session could not be loaded")
         return result
 
-    def revoke_session(self, session_id: UUID) -> Session:
+    def revoke_session(self, session_id: UUID, reason: str | None = None) -> Session:
         with self.database.session() as db:
             record = db.get(SessionRecord, str(session_id))
             if record is None:
                 raise SessionNotFoundError(str(session_id))
             record.status = SessionStatus.REVOKED.value
+            record.status_reason = reason or "REVOKED_BY_USER"
             db.commit()
         result = self.get_session(session_id)
         if result is None:
@@ -148,12 +149,18 @@ class DatabaseStore:
                         description=tool.description,
                         sensitivity=tool.sensitivity.value,
                         requires_signature=tool.requires_signature,
+                        category=tool.category.value,
+                        path_parameters=self._optional_list(tool.path_parameters),
+                        destination_parameters=self._optional_list(tool.destination_parameters),
                     )
                 )
             else:
                 record.description = tool.description
                 record.sensitivity = tool.sensitivity.value
                 record.requires_signature = tool.requires_signature
+                record.category = tool.category.value
+                record.path_parameters = self._optional_list(tool.path_parameters)
+                record.destination_parameters = self._optional_list(tool.destination_parameters)
             db.commit()
         return tool
 
@@ -166,12 +173,34 @@ class DatabaseStore:
             record = db.get(ToolRecord, name)
             if record is None:
                 return None
-            return ToolDefinition(
-                name=record.name,
-                description=record.description,
-                sensitivity=ToolSensitivity(record.sensitivity),
-                requires_signature=record.requires_signature,
-            )
+            return self._to_tool(record)
+
+    def list_tools(self) -> list[ToolDefinition]:
+        with self.database.session() as db:
+            records = db.scalars(select(ToolRecord).order_by(ToolRecord.name)).all()
+            return [self._to_tool(record) for record in records]
+
+    @staticmethod
+    def _optional_list(values: tuple[str, ...] | None) -> list[str] | None:
+        return None if values is None else list(values)
+
+    @staticmethod
+    def _to_tool(record: ToolRecord) -> ToolDefinition:
+        return ToolDefinition(
+            name=record.name,
+            description=record.description,
+            sensitivity=ToolSensitivity(record.sensitivity),
+            requires_signature=record.requires_signature,
+            category=ToolCategory(record.category or ToolCategory.OTHER.value),
+            path_parameters=(
+                None if record.path_parameters is None else tuple(record.path_parameters)
+            ),
+            destination_parameters=(
+                None
+                if record.destination_parameters is None
+                else tuple(record.destination_parameters)
+            ),
+        )
 
     def create_agent(self, request: AgentCreate) -> AgentIdentity:
         now, agent_id = datetime.now(UTC), uuid4()
@@ -277,6 +306,9 @@ class DatabaseStore:
         findings: tuple[SecurityFinding, ...] = (),
         stage_timings_ms: dict[str, float] | None = None,
         total_latency_ms: float = 0,
+        intent_anchor_version: int | None = None,
+        intent_anchor_hash: str | None = None,
+        actor: str | None = None,
     ) -> tuple[UUID | None, bool]:
         now = datetime.now(UTC)
         timings = stage_timings_ms or {}
@@ -291,6 +323,9 @@ class DatabaseStore:
                         tool_name=action.tool_name,
                         safe_parameters=safe_parameters,
                         created_at=now,
+                        intent_anchor_version=intent_anchor_version,
+                        intent_anchor_hash=intent_anchor_hash,
+                        actor=actor,
                     )
                 )
                 db.add(
@@ -307,6 +342,8 @@ class DatabaseStore:
                         stage_timings_ms=timings,
                         total_latency_ms=total_latency_ms,
                         created_at=now,
+                        action_risk=assessment.action_risk,
+                        decided_by=assessment.decided_by,
                     )
                 )
             head = db.scalar(
@@ -341,6 +378,9 @@ class DatabaseStore:
                 stage_timings_ms=timings,
                 previous_hash=head.last_hash,
                 created_at=now,
+                intent_anchor_hash=intent_anchor_hash,
+                decided_by=assessment.decided_by,
+                actor=actor,
             )
             db.add(
                 AuditRecord(
@@ -359,6 +399,9 @@ class DatabaseStore:
                     finding_codes=finding_codes,
                     stage_timings_ms=timings,
                     created_at=now,
+                    intent_anchor_hash=intent_anchor_hash,
+                    decided_by=assessment.decided_by,
+                    actor=actor,
                 )
             )
             head.last_sequence = sequence
@@ -407,6 +450,7 @@ class DatabaseStore:
                         status=ApprovalStatus.PENDING.value,
                         expires_at=now + timedelta(seconds=approval_ttl_seconds),
                         created_at=now,
+                        reason_codes=list(reason_codes),
                     )
                 )
             db.commit()
@@ -444,7 +488,12 @@ class DatabaseStore:
             db.commit()
             return self._to_approval(record)
 
-    def resolve_approval(self, approval_id: UUID, resolution: ApprovalResolution) -> Approval:
+    def resolve_approval(
+        self,
+        approval_id: UUID,
+        resolution: ApprovalResolution,
+        resolved_by: str | None = None,
+    ) -> Approval:
         with self.database.session() as db:
             record = db.scalar(
                 select(ApprovalRecord)
@@ -458,6 +507,7 @@ class DatabaseStore:
                 raise ValueError("Approval is no longer pending")
             record.status = resolution.value
             record.resolved_at = datetime.now(UTC)
+            record.resolved_by = resolved_by
             db.commit()
             return self._to_approval(record)
 
@@ -499,6 +549,8 @@ class DatabaseStore:
             expires_at=record.expires_at,
             created_at=record.created_at,
             resolved_at=record.resolved_at,
+            resolved_by=record.resolved_by,
+            reason_codes=tuple(record.reason_codes or ()),
         )
 
     def audit_for_session(self, session_id: UUID) -> list[AuditEvent]:
@@ -525,6 +577,9 @@ class DatabaseStore:
                     finding_codes=tuple(record.finding_codes),
                     stage_timings_ms=record.stage_timings_ms,
                     created_at=record.created_at,
+                    intent_anchor_hash=record.intent_anchor_hash,
+                    decided_by=record.decided_by,
+                    actor=record.actor,
                 )
                 for record in records
             ]
@@ -554,6 +609,9 @@ class DatabaseStore:
                 stage_timings_ms=event.stage_timings_ms,
                 previous_hash=event.previous_hash,
                 created_at=event.created_at,
+                intent_anchor_hash=event.intent_anchor_hash,
+                decided_by=event.decided_by,
+                actor=event.actor,
             )
             if calculated != event.entry_hash:
                 errors.append(f"Entry hash mismatch at event {event.event_id}")
@@ -621,15 +679,51 @@ class DatabaseStore:
     def recent_activity(self, session_id: UUID, limit: int = 20) -> list[Activity]:
         with self.database.session() as db:
             rows = db.execute(
-                select(ActionRecord.tool_name, DecisionRecord.outcome)
+                select(ActionRecord.tool_name, DecisionRecord.outcome, ToolRecord.category)
+                .join(DecisionRecord, DecisionRecord.action_id == ActionRecord.id)
+                .outerjoin(ToolRecord, ToolRecord.name == ActionRecord.tool_name)
+                .where(ActionRecord.session_id == str(session_id))
+                .order_by(ActionRecord.created_at.desc())
+                .limit(limit)
+            ).all()
+            return [
+                Activity(
+                    tool_name=row.tool_name,
+                    outcome=row.outcome,
+                    category=row.category or ToolCategory.OTHER.value,
+                )
+                for row in reversed(rows)
+            ]
+
+    def recent_calls(self, session_id: UUID, limit: int = 10) -> list[dict[str, object]]:
+        """Tool names + redacted arguments of recent calls (for the LLM judge's context)."""
+        with self.database.session() as db:
+            rows = db.execute(
+                select(ActionRecord.tool_name, ActionRecord.safe_parameters, DecisionRecord.outcome)
                 .join(DecisionRecord, DecisionRecord.action_id == ActionRecord.id)
                 .where(ActionRecord.session_id == str(session_id))
                 .order_by(ActionRecord.created_at.desc())
                 .limit(limit)
             ).all()
             return [
-                Activity(tool_name=row.tool_name, outcome=row.outcome) for row in reversed(rows)
+                {"tool": row.tool_name, "arguments": row.safe_parameters, "outcome": row.outcome}
+                for row in reversed(rows)
             ]
+
+    def count_blocks(self, session_id: UUID) -> int:
+        with self.database.session() as db:
+            return int(
+                db.scalar(
+                    select(func.count())
+                    .select_from(DecisionRecord)
+                    .join(ActionRecord, ActionRecord.id == DecisionRecord.action_id)
+                    .where(
+                        ActionRecord.session_id == str(session_id),
+                        DecisionRecord.outcome == DecisionType.BLOCK.value,
+                    )
+                )
+                or 0
+            )
 
     def findings_for_session(self, session_id: UUID) -> list[SecurityFinding]:
         with self.database.session() as db:
@@ -693,6 +787,7 @@ class DatabaseStore:
             risk_score=record.risk_score,
             intent_anchor_hash=anchor.canonical_hash,
             status=SessionStatus(record.status),
+            status_reason=record.status_reason,
             created_at=record.created_at,
         )
 

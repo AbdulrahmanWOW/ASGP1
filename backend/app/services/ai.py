@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.domain.actions import ActionRequest
 from app.domain.security import FindingKind, FindingSeverity, SecurityFinding
 from app.domain.sessions import Session
+from app.domain.tools import ToolDefinition
 
 
 class AlignmentResult(BaseModel):
@@ -23,6 +24,8 @@ class AlignmentContext:
     allowed_tools: frozenset[str]
     tool_name: str
     parameters: dict[str, Any]
+    tool_description: str = ""
+    tool_category: str = "other"
 
 
 class AIProvider(Protocol):
@@ -55,13 +58,15 @@ class IntentAlignmentService:
         self.provider = provider
 
     def analyze(
-        self, session: Session, action: ActionRequest
+        self, session: Session, action: ActionRequest, tool: ToolDefinition | None = None
     ) -> tuple[float | None, list[SecurityFinding]]:
         context = AlignmentContext(
             intent=session.intent,
             allowed_tools=session.allowed_tools,
             tool_name=action.tool_name,
             parameters=action.parameters,
+            tool_description=tool.description if tool else "",
+            tool_category=tool.category.value if tool else "other",
         )
         try:
             result = AlignmentResult.model_validate(self.provider.score_alignment(context))

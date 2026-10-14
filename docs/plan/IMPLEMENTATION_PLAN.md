@@ -63,7 +63,7 @@ Rate limiting; exporting audit heads outside the DB; multi-agent chain of trust;
 ## Status
 
 - [x] Context pack (`CLAUDE.md`, `docs/context/`, this plan)
-- [ ] Phase 1
+- [x] Phase 1 — auth + roles, fail-closed boundaries, risk rework + run termination, category-based behavior, traceability (migration 0006)
 - [ ] Phase 2
 - [ ] Phase 3
 - [ ] Phase 4

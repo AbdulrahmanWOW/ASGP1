@@ -20,6 +20,12 @@ services:
     environment:
       ASGP_DATABASE_URL: postgresql+psycopg://asgp:change-me@postgres:5432/asgp
       ASGP_ALLOWED_ORIGINS: http://localhost:4173,http://127.0.0.1:4173
+      # Development keys only. Replace for any shared environment (role:name:key).
+      ASGP_API_KEYS: ${ASGP_API_KEYS:-admin:ops:dev-admin-key-change-me,user:reviewer:dev-user-key-change-me,agent:demo-agent:dev-agent-key-change-me}
+      ASGP_ALIGNMENT_PROVIDER: ${ASGP_ALIGNMENT_PROVIDER:-lexical}
+      ASGP_JUDGE: ${ASGP_JUDGE:-none}
+      ASGP_OLLAMA_URL: ${ASGP_OLLAMA_URL:-http://ollama:11434}
+      ASGP_JUDGE_MODEL: ${ASGP_JUDGE_MODEL:-qwen2.5:3b}
     ports:
       - "8000:8000"
     depends_on:
@@ -40,7 +46,22 @@ services:
       dockerfile: Dockerfile.demo
     depends_on:
       - backend
+    environment:
+      ASGP_DEMO_ADMIN_KEY: dev-admin-key-change-me
+      ASGP_DEMO_USER_KEY: dev-user-key-change-me
+      ASGP_DEMO_AGENT_KEY: dev-agent-key-change-me
     command: ["python", "-m", "demo.run_agent", "--base-url", "http://backend:8000"]
+
+  # Optional local LLM judge: `docker compose --profile judge up`, then
+  # `docker compose exec ollama ollama pull qwen2.5:3b` and set ASGP_JUDGE=ollama.
+  ollama:
+    profiles: ["judge"]
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - asgp_ollama_models:/root/.ollama
 
 volumes:
   asgp_postgres_data:
+  asgp_ollama_models:

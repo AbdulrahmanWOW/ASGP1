@@ -13,9 +13,13 @@ class DecisionOutcome(StrEnum):
 
 
 class VerificationResult(BaseModel):
-    """Stable Phase 0 response contract consumed by the future tool wrapper."""
+    """Gateway verification response.
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    Unknown fields are ignored so newer gateways stay compatible with older SDKs; the fields
+    the SDK acts on (outcome, approval binding) are still strictly validated.
+    """
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
 
     action_id: UUID
     outcome: DecisionOutcome
@@ -28,6 +32,9 @@ class VerificationResult(BaseModel):
     findings: tuple["SecurityFindingResult", ...] = ()
     stage_timings_ms: dict[str, float] = Field(default_factory=dict)
     total_latency_ms: float = Field(default=0, ge=0)
+    action_risk: int = Field(default=0, ge=0, le=100)
+    decided_by: str = "score"
+    intent_anchor_version: int | None = None
 
     @model_validator(mode="after")
     def validate_approval_reference(self) -> "VerificationResult":
@@ -53,6 +60,7 @@ class ActionRequest(BaseModel):
     nonce: str | None = Field(default=None, min_length=16, max_length=120)
     sequence: int | None = Field(default=None, ge=1)
     signature: str | None = Field(default=None, min_length=40, max_length=200)
+    intent_token: str | None = Field(default=None, max_length=4096)
 
 
 class ApprovalState(StrEnum):

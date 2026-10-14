@@ -16,6 +16,7 @@ class SessionRecord(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     risk_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class IntentAnchorRecord(Base):
@@ -43,6 +44,9 @@ class ToolRecord(Base):
     description: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     sensitivity: Mapped[str] = mapped_column(String(20), nullable=False, default="low")
     requires_signature: Mapped[bool] = mapped_column(nullable=False, default=False)
+    category: Mapped[str] = mapped_column(String(20), nullable=False, default="other")
+    path_parameters: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    destination_parameters: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
 
 class AgentRecord(Base):
@@ -86,6 +90,9 @@ class ActionRecord(Base):
     tool_name: Mapped[str] = mapped_column(String(120), nullable=False)
     safe_parameters: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    intent_anchor_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    intent_anchor_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    actor: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class DecisionRecord(Base):
@@ -105,6 +112,8 @@ class DecisionRecord(Base):
     stage_timings_ms: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False, default=dict)
     total_latency_ms: Mapped[float] = mapped_column(nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    action_risk: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class AuditRecord(Base):
@@ -126,6 +135,9 @@ class AuditRecord(Base):
     finding_codes: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     stage_timings_ms: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    intent_anchor_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    actor: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class AuditHeadRecord(Base):
@@ -177,3 +189,5 @@ class ApprovalRecord(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    reason_codes: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)

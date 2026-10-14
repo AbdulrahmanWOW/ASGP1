@@ -23,7 +23,11 @@ def setup_medium_action(client: TestClient) -> tuple[str, dict]:
     )
     session_id = client.post(
         "/api/v1/sessions",
-        json={"intent": "Prepare and send an approved report", "allowed_tools": ["send_report"]},
+        json={
+            "intent": "Prepare and send an approved report",
+            "allowed_tools": ["send_report"],
+            "allowed_destinations": ["reviewer@example.test", "another@example.test"],
+        },
     ).json()["session_id"]
     decision = client.post(
         "/api/v1/actions/verify",
@@ -43,15 +47,19 @@ def test_medium_risk_escalates_and_records_explainable_change(tmp_path: Path) ->
         risk = client.get(f"/api/v1/risk/{session_id}").json()
 
     assert decision["outcome"] == "ESCALATE"
+    assert decision["action_risk"] == 40
+    assert decision["decided_by"] == "score"
+    # Session suspicion only grows from findings / hard blocks, not from tool sensitivity.
     assert decision["risk_before"] == 0
-    assert decision["risk_delta"] == 40
-    assert decision["risk_after"] == 40
+    assert decision["risk_delta"] == 0
+    assert decision["risk_after"] == 0
     assert decision["approval_id"] is not None
     assert len(pending) == 1
+    assert pending[0]["reason_codes"] == ["RISK_THRESHOLD_ESCALATE"]
     assert risk[0]["previous_score"] == 0
-    assert risk[0]["delta"] == 40
-    assert risk[0]["new_score"] == 40
-    assert risk[0]["reason"] == "Tool sensitivity is medium"
+    assert risk[0]["delta"] == 0
+    assert risk[0]["new_score"] == 0
+    assert risk[0]["reason"] == "Tool sensitivity is medium (base 40)"
 
 
 def test_approved_action_is_consumed_once_and_bound_to_action(tmp_path: Path) -> None:
@@ -132,7 +140,8 @@ def test_hard_policy_block_has_priority_over_medium_risk(tmp_path: Path) -> None
     assert decision["approval_id"] is None
 
 
-def test_accumulated_risk_can_turn_second_medium_action_into_block(tmp_path: Path) -> None:
+def test_repeated_medium_actions_escalate_without_session_poisoning(tmp_path: Path) -> None:
+    """A second clean medium call still reaches a human instead of being blocked."""
     with phase3_client(tmp_path) as client:
         session_id, first = setup_medium_action(client)
         second = client.post(
@@ -145,7 +154,8 @@ def test_accumulated_risk_can_turn_second_medium_action_into_block(tmp_path: Pat
         ).json()
 
     assert first["outcome"] == "ESCALATE"
-    assert second["outcome"] == "BLOCK"
-    assert second["risk_before"] == 40
-    assert second["risk_after"] == 80
-    assert second["approval_id"] is None
+    assert second["outcome"] == "ESCALATE"
+    assert second["risk_before"] == 0
+    assert second["risk_after"] == 0
+    assert second["action_risk"] == 40
+    assert second["approval_id"] is not None

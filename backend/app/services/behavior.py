@@ -2,28 +2,54 @@ from dataclasses import dataclass
 
 from app.domain.actions import ActionRequest
 from app.domain.security import FindingKind, FindingSeverity, SecurityFinding
+from app.domain.tools import ToolCategory, ToolDefinition
+
+READ_MARKERS = ("read", "list", "search", "browse", "fetch", "get")
+EXTERNAL_MARKERS = ("send", "upload", "export", "publish", "post", "share", "sync")
 
 
 @dataclass(frozen=True)
 class Activity:
     tool_name: str
     outcome: str
+    category: str = ToolCategory.OTHER.value
+
+
+def _is_read(name: str, category: str) -> bool:
+    if category == ToolCategory.READ:
+        return True
+    if category != ToolCategory.OTHER:
+        return False
+    return any(marker in name.casefold() for marker in READ_MARKERS)
+
+
+def _is_external(name: str, category: str) -> bool:
+    if category == ToolCategory.EXTERNAL:
+        return True
+    if category != ToolCategory.OTHER:
+        return False
+    return any(marker in name.casefold() for marker in EXTERNAL_MARKERS)
 
 
 class BehavioralAnalyzer:
-    READ_MARKERS = ("read", "list", "search", "browse", "fetch")
-    EXTERNAL_MARKERS = ("send", "upload", "export", "publish", "post")
+    """Stateful sequence rules over recent session activity.
 
-    def analyze(self, action: ActionRequest, history: list[Activity]) -> list[SecurityFinding]:
+    Uses the registered tool ``category``; tool-name substrings are only a fallback for tools
+    registered without a category.
+    """
+
+    def analyze(
+        self,
+        action: ActionRequest,
+        history: list[Activity],
+        tool: ToolDefinition | None = None,
+    ) -> list[SecurityFinding]:
         findings: list[SecurityFinding] = []
         recent = history[-10:]
         blocked = sum(item.outcome == "BLOCK" for item in recent)
-        reads = [
-            item
-            for item in recent
-            if any(marker in item.tool_name.casefold() for marker in self.READ_MARKERS)
-        ]
-        is_external = any(marker in action.tool_name.casefold() for marker in self.EXTERNAL_MARKERS)
+        reads = [item for item in recent if _is_read(item.tool_name, item.category)]
+        category = tool.category.value if tool else ToolCategory.OTHER.value
+        is_external = _is_external(action.tool_name, category)
         if blocked >= 2:
             findings.append(
                 SecurityFinding(

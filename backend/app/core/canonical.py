@@ -83,6 +83,9 @@ def audit_entry_hash(
     stage_timings_ms: dict[str, float],
     previous_hash: str,
     created_at: object,
+    intent_anchor_hash: str | None = None,
+    decided_by: str | None = None,
+    actor: str | None = None,
 ) -> str:
     value = created_at
     if value.tzinfo is None:
@@ -106,4 +109,8 @@ def audit_entry_hash(
         "stage_timings_ms": stage_timings_ms,
         "tool_name": tool_name,
     }
+    # Fields added after Phase 6 are hashed only when present, so chains written before the
+    # migration still verify unchanged.
+    optional = {"actor": actor, "decided_by": decided_by, "intent_anchor_hash": intent_anchor_hash}
+    payload.update({key: value for key, value in optional.items() if value is not None})
     return hashlib.sha256(canonical_json(payload)).hexdigest()
