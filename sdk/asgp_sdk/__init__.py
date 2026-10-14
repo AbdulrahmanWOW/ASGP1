@@ -16,6 +16,7 @@ from asgp_sdk.exceptions import (
     ContentQuarantined,
     VerificationUnavailable,
 )
+from asgp_sdk.guard import GuardDecision, RunTerminated, ToolGuard
 from asgp_sdk.signing import ActionSigner, Ed25519KeyPair
 from asgp_sdk.tools import guard_content, protect_tool
 
@@ -34,6 +35,9 @@ __all__ = [
     "ContentQuarantined",
     "DecisionOutcome",
     "Ed25519KeyPair",
+    "GuardDecision",
+    "RunTerminated",
+    "ToolGuard",
     "SecurityFindingResult",
     "VerificationResult",
     "VerificationUnavailable",

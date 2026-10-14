@@ -79,6 +79,30 @@ class ASGPClient:
         except (httpx.HTTPError, ValidationError, ValueError) as error:
             raise VerificationUnavailable("ASGP content ingress failed closed") from error
 
+    def get_approval(self, approval_id: UUID) -> ApprovalResult:
+        try:
+            response = httpx.get(
+                f"{self.base_url}/api/v1/approvals/{approval_id}",
+                headers=self.headers,
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+            return ApprovalResult.model_validate(response.json())
+        except (httpx.HTTPError, ValidationError, ValueError) as error:
+            raise VerificationUnavailable("Approval lookup failed closed") from error
+
+    def consume_approval(self, approval_id: UUID, action_id: UUID) -> None:
+        try:
+            response = httpx.post(
+                f"{self.base_url}/api/v1/approvals/{approval_id}/consume",
+                json={"action_id": str(action_id)},
+                headers=self.headers,
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise VerificationUnavailable("Approval consumption failed closed") from error
+
     def wait_for_approval(
         self,
         approval_id: UUID,
