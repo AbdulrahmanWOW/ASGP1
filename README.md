@@ -22,6 +22,19 @@ ASGP is a graduation-project security prototype placed between an integrated AI 
 
 ASGP governs registered tools routed through its SDK or gateway. It does not claim to intercept arbitrary code or tools that bypass that integration boundary.
 
+## What this branch adds
+
+Branch `new-test-branch-with-newer-sdks-and-proxy` moves the MVP to the final hybrid design in [`docs/context/DESIGN.md`](docs/context/DESIGN.md). Status and acceptance criteria: [`docs/plan/IMPLEMENTATION_PLAN.md`](docs/plan/IMPLEMENTATION_PLAN.md).
+
+- **API authentication with roles** (`admin`, `user`, `agent`): an agent can no longer approve its own escalation, change its scope or administer the gateway.
+- **Human-confirmed, signed intent**: the agent drafts a least-privilege scope (`POST /intents/drafts`), a human confirms it, and ASGP issues an Ed25519-signed intent token that every call must carry.
+- **Fail-closed boundaries**: path/destination parameters are checked under many names (or as declared per tool), empty allow-lists deny, URLs are matched by host.
+- **Risk rework**: per-action scoring, no risk washing, high-impact tools go to a human instead of being blocked, suspicious sessions force review, repeated blocks end the run.
+- **Hybrid pipeline**: embedding alignment over the whole call (arguments included) and an optional **local Ollama judge** for the gray zone that fails closed and never sees ingested content.
+- **Framework adapters**: LangChain/LangGraph middleware (interrupt/resume), raw API loop (OpenAI/Anthropic/Ollama formats), Claude Agent SDK callback + hook.
+- **MCP gateway** (`gateway/`): govern MCP tools for agents you don't own (Claude Desktop, Cursor) with a config change.
+- **Traceability**: decisions record the intent version, deciding layer and actor; approvals record who resolved them.
+
 ## Why ASGP?
 
 An agent may begin with a legitimate user objective, then encounter malicious instructions in email, files, web content, or retrieved documents. ASGP keeps authorization outside the probabilistic model and combines deterministic controls with explainable semantic and behavioral signals.
@@ -36,15 +49,17 @@ User Intent → AI Agent → ASGP SDK → Security Pipeline
 
 ## Security pipeline
 
-1. Session and Intent Anchor validation.
+0. Caller authenticated by API key and role.
+1. Session validation and **signed intent token** (for human-confirmed sessions).
 2. Tool registration and request-schema validation.
-3. Ed25519 signature, nonce, expiry, and replay checks.
-4. Deterministic tool, path, destination, and structured-policy enforcement.
-5. Provider-independent intent-alignment signal.
-6. Prompt-injection and behavioral findings.
-7. Explainable bounded risk calculation.
-8. `ALLOW`, `BLOCK`, or `ESCALATE` decision precedence.
-9. Secret-redacted, hash-chained audit and timing metrics.
+3. Ed25519 agent-request signature, nonce, expiry, and replay checks (tools that require it).
+4. Deterministic tool, path, destination, and structured-policy enforcement (fail closed).
+5. Intent-alignment signal (lexical, hashing or local sentence-transformers embeddings).
+6. Prompt-injection and category-based behavioral findings.
+7. Per-action risk score; high-impact and suspicious-session floors.
+8. Optional local LLM judge for the gray zone (can tighten; may relax only plain gray-zone calls).
+9. `ALLOW`, `BLOCK`, or `ESCALATE` (human approval bound to one exact action).
+10. Secret-redacted, hash-chained audit with intent version, deciding layer and actor.
 
 ## Features
 
@@ -76,6 +91,8 @@ cd ASGP
 docker-compose up --build
 ```
 
+The compose file ships **development** API keys (`dev-admin-key-change-me`, `dev-user-key-change-me`, `dev-agent-key-change-me`); set `ASGP_API_KEYS` to your own for anything shared. Paste the user or admin key into the dashboard's "Dashboard API key" box. Optional local judge: `docker compose --profile judge up`, pull a model into the `ollama` service and set `ASGP_JUDGE=ollama`.
+
 Open:
 
 - Dashboard: [http://127.0.0.1:4173](http://127.0.0.1:4173)
@@ -94,8 +111,9 @@ For native Python and Node.js setup, see the [deployment guide](docs/DEPLOYMENT.
 From the repository root:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest backend\tests sdk\tests
-.\.venv\Scripts\python.exe -m ruff check backend sdk demo
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check backend sdk gateway demo tests_support
 ```
 
 From the `frontend` directory:
@@ -105,7 +123,7 @@ pnpm build
 pnpm lint
 ```
 
-At the documented delivery point, all **64 automated tests** and frontend production checks pass.
+On this branch all **118 automated tests** (backend, SDK adapters against real LangChain/LangGraph/Claude Agent SDK packages, MCP gateway including an end-to-end stdio run) and the frontend production checks pass.
 
 ## Reproducible evaluation
 
@@ -113,35 +131,38 @@ At the documented delivery point, all **64 automated tests** and frontend produc
 .\.venv\Scripts\python.exe -m demo.evaluate
 ```
 
-The controlled evaluation uses 12 reviewable seeds exercised as 60 deterministic traceable cases:
+The controlled evaluation now uses 19 reviewable seeds exercised as 95 deterministic traceable cases (lexical provider, no LLM judge). Seven seeds were added on this branch **after** the hardening to exercise the gaps it closes, so they are not an independent test set. Same seeds, both pipelines:
 
-| Metric | Result |
-|---|---:|
-| Exact decision accuracy | 91.7% |
-| Macro precision | 95.2% |
-| Macro recall | 91.7% |
-| Macro F1 | 92.7% |
-| Malicious detection rate | 100% |
-| Ambiguous escalation rate | 100% |
-| Legitimate false-positive rate | 25% |
+| Metric | `main` | this branch |
+|---|---:|---:|
+| Exact decision accuracy | 68.4% | 89.5% |
+| Malicious detection rate | 66.7% | 100% |
+| Ambiguous escalation rate | 50.0% | 100% |
+| Legitimate false-positive rate | 16.7% | 33.3% |
 
-These values apply only to the included controlled dataset. The retained false positive and policy-only ablation failures are documented rather than hidden. See the [latest evaluation report](evaluation/latest/REPORT.md).
+The branch's extra false positive is deliberate evidence: a contact lookup by `email` is blocked by the fail-closed default destination-parameter list (fixable per tool). On the original 12 seeds the branch reproduces `main`'s results exactly (91.7%, 25% false positives). These values apply only to the included controlled dataset. See the [latest evaluation report](evaluation/latest/REPORT.md) and the [per-seed comparison](evaluation/BRANCH_COMPARISON.md).
 
 ## Repository structure
 
 ```text
 backend/      FastAPI governance API, persistence, and security pipeline
-sdk/          Python integration SDK and protected-tool wrappers
+sdk/          Python SDK: ToolGuard core + LangChain/LangGraph, raw-loop, Claude Agent SDK adapters
+gateway/      MCP gateway (asgp-gateway) for MCP clients you don't own
+tests_support/ Shared in-process gateway harness for adapter and gateway tests
 frontend/     React and TypeScript operations dashboard
 demo/         Controlled tools, attack lab, and labeled scenarios
 evaluation/   Generated JSON, CSV, and Markdown results
-docs/         Architecture, phases, defense material, and deployment guides
+docs/         Architecture, phases, defense material, deployment guides,
+              context/ (design source of truth, reviews, paper summaries) and plan/
 ```
 
 ## Documentation
 
 ### Core design
 
+- [Design source of truth (final hybrid design, literature, known errors)](docs/context/DESIGN.md)
+- [Branch implementation plan and status](docs/plan/IMPLEMENTATION_PLAN.md)
+- [MCP gateway guide](gateway/README.md)
 - [Original vision](Plan.txt)
 - [MVP scope](docs/MVP_SCOPE.md)
 - [Threat model](docs/THREAT_MODEL.md)
@@ -181,4 +202,4 @@ ASGP is an integration-boundary control, not a universal agent sandbox. A valid 
 
 ## Project status
 
-All roadmap phases from foundation through the integrated demo agent, ingress quarantine, expanded evaluation, research dashboard, and delivery are complete. High-value future work includes MCP/framework-specific adapters, centralized credential-isolated tool execution, independent real-world datasets, and production identity and access controls.
+All roadmap phases from foundation through delivery are complete in `main`. This branch adds the hybrid pipeline, framework adapters and the MCP gateway (see the implementation plan). Future work: an AgentDojo run and an independent dataset, tuning embedding thresholds and evaluating the local judge, rate limiting, exporting audit heads outside the database, a streamable-HTTP gateway transport, and dashboard pages for drafts and policies.

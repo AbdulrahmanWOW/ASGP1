@@ -129,9 +129,7 @@ def test_high_impact_with_suspicious_signals_still_blocks(tmp_path: Path) -> Non
             ["send_email"],
             allowed_destinations=["boss@example.test"],
         )
-        decision = verify(
-            client, sid, "send_email", {"to": "boss@example.test", "body": "summary"}
-        )
+        decision = verify(client, sid, "send_email", {"to": "boss@example.test", "body": "summary"})
     # high base 50 + LOW_INTENT_ALIGNMENT (+45) -> 95 -> BLOCK
     assert decision["outcome"] == "BLOCK"
     assert decision["action_risk"] >= 70
@@ -258,3 +256,33 @@ def test_old_audit_entries_hash_the_same_without_new_fields() -> None:
     ).hexdigest()
     assert audit_entry_hash(**fields, created_at=created) == legacy
     assert audit_entry_hash(**fields, created_at=created, decided_by="rules") != legacy
+
+
+def test_audit_hash_does_not_depend_on_database_time_zone() -> None:
+    """Regression: PostgreSQL in a non-UTC zone returned local timestamps and broke the chain."""
+    from datetime import UTC, datetime
+    from zoneinfo import ZoneInfo
+
+    fields = {
+        "event_id": "e",
+        "action_id": "a",
+        "session_id": "s",
+        "sequence": 1,
+        "tool_name": "t",
+        "safe_parameters": {},
+        "outcome": "ALLOW",
+        "reason_codes": ["X"],
+        "risk_before": 0,
+        "risk_after": 0,
+        "finding_codes": [],
+        "stage_timings_ms": {},
+        "previous_hash": "0" * 64,
+    }
+    instant = datetime(2026, 10, 14, 17, 0, 8, 892755, tzinfo=UTC)
+    cairo = instant.astimezone(ZoneInfo("Africa/Cairo"))
+    assert audit_entry_hash(**fields, created_at=cairo) == audit_entry_hash(
+        **fields, created_at=instant
+    )
+    assert audit_entry_hash(**fields, created_at=instant.replace(tzinfo=None)) == (
+        audit_entry_hash(**fields, created_at=instant)
+    )

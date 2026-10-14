@@ -123,7 +123,7 @@ class GovernanceService:
         )
         if assessment.outcome is DecisionType.ESCALATE and self.judge is not None:
             assessment, reason_codes, judge_finding = self._consult_judge(
-                session, action, tool, assessment, timer
+                session, action, tool, assessment, timer, findings
             )
             findings = (*findings, judge_finding)
         return self._record(
@@ -144,6 +144,7 @@ class GovernanceService:
         tool: ToolDefinition,
         assessment: RiskAssessment,
         timer: PipelineTimer,
+        findings: tuple[SecurityFinding, ...] = (),
     ) -> tuple[RiskAssessment, tuple[str, ...], SecurityFinding]:
         request = JudgeRequest(
             intent=session.intent,
@@ -189,10 +190,16 @@ class GovernanceService:
                 ("JUDGE_BLOCK",),
                 self._judge_finding("JUDGE_BLOCK", FindingSeverity.HIGH, evidence),
             )
+        # The judge may only relax plain gray-zone calls. Injection or behavior evidence, high
+        # impact, or a suspicious session always keep the human in the loop.
         may_relax = (
             assessment.decided_by == DecisionLayer.SCORE
             and not tool.is_high_impact
             and session.risk_score < self.risk.SESSION_REVIEW_AT
+            and not any(
+                finding.kind in {FindingKind.PROMPT_INJECTION, FindingKind.BEHAVIOR}
+                for finding in findings
+            )
         )
         if verdict.verdict == "allow" and may_relax:
             allowed = replace(

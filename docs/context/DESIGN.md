@@ -489,20 +489,20 @@ Both describe:
 - [x] Human escalation exists (digest-bound, single-use, expiring approvals)
 
 **Build (critical path first)**
-- [ ] **Replace `MockProvider`**: real embedding layer + local LLM judge with JSON verdicts.
-- [ ] Add intent confirmation (draft scope → user OK → sign).
-- [ ] Add per-tool risk levels (the triggers for high-impact approval).
-- [ ] Make the content ingress scanner automatic (middleware, not a manual call).
-- [ ] LangChain/LangGraph adapter with interrupt/resume and caching by call ID.
+- [x] **Replace `MockProvider`**: embedding layer (hashing / local sentence-transformers) + local Ollama judge with JSON verdicts — built on the branch; thresholds still untuned, judge not yet evaluated.
+- [x] Add intent confirmation (draft scope → user OK → sign) — branch Phase 2.
+- [x] Add per-tool risk levels (category + sensitivity drive high-impact approval) — branch Phase 1.
+- [x] Content ingress on tool results via adapters/gateway (`scan_results`) — branch Phases 3–4. Still opt-in for `protect_tool` users.
+- [x] LangChain/LangGraph adapter with interrupt/resume and caching by call ID — branch Phase 3.
 
 **Design decisions still open (likely defense questions)**
-- [ ] **Multi-turn policy:** does a new user message create a new signed intent or extend the old one?
+- [x] **Multi-turn policy:** a new user instruction = `PUT /sessions/{id}/intent` by the user → new anchor version; old tokens become `INTENT_TOKEN_STALE` until re-issued.
 - [x] **Replay protection:** exists for signed agent requests; the new intent token carries session ID, anchor hash, expiry and a unique token ID.
 - [ ] **Thresholds:** the embedding high/low cutoffs and the block-count limit. These need empirical tuning.
 - [ ] **Sub-agent identity** (only if chain of trust is attempted).
 
 **Evaluation**
-- [ ] Expand to 50–100+ scenarios and/or run on AgentDojo.
+- [ ] Expand to 50–100+ scenarios and/or run on AgentDojo. (Now 19 seeds / 95 cases; 7 seeds written after the branch changes — still need an independent set / AgentDojo.)
 - [ ] Report ASR, utility (benign and under attack), per-layer accuracy, per-layer latency and escalation rate.
 
 **Writing**

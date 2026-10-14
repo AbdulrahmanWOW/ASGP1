@@ -67,4 +67,4 @@ Rate limiting; exporting audit heads outside the DB; multi-agent chain of trust;
 - [x] Phase 2 — intent drafts + human confirmation, signed intent tokens, embedding layer (lexical/hashing/sentence-transformers), local Ollama judge for the gray zone, assistive LLM drafter (migration 0007)
 - [x] Phase 3 — ToolGuard core; LangChain/LangGraph middleware + ToolNode wrapper (interrupt/resume, wait mode, result scanning); raw loop for OpenAI/Anthropic/Ollama formats; Claude Agent SDK permission callback + PreToolUse hook (tested on langchain 1.4.5, langgraph 1.2.15, claude-agent-sdk 0.2.166)
 - [x] Phase 4 — `asgp-gateway` MCP proxy (stdio, mcp 2.3): routes every tools/call through ASGP, fail-closed, escalation wait, result scanning, name-clash prefixes, opt-in tool registration; end-to-end stdio test
-- [ ] Phase 5
+- [x] Phase 5 — 118 tests + ruff + frontend build/lint; migrations and full workflow verified on PostgreSQL 16 (found and fixed a pre-existing audit-hash time-zone bug); evaluation extended to 19 seeds with a main-vs-branch comparison; self-review tightened the judge (no relaxing calls with injection/behavior evidence); README/LIMITATIONS updated

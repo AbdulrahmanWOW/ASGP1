@@ -13,6 +13,6 @@ def test_evaluation_publishes_dashboard_research_artifact(
     evaluation.write_reports(full, policy_only, tmp_path / "report")
     dashboard = json.loads(frontend_report.read_text(encoding="utf-8"))
 
-    assert dashboard["full"]["summary"]["scenario_count"] == 60
+    assert dashboard["full"]["summary"]["scenario_count"] == 95
     assert dashboard["full"]["summary"]["confusion_matrix"]
     assert dashboard["policy_only"]["summary"]["macro_f1"] < 1

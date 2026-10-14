@@ -87,11 +87,12 @@ def audit_entry_hash(
     decided_by: str | None = None,
     actor: str | None = None,
 ) -> str:
-    value = created_at
-    if value.tzinfo is None:
-        from datetime import UTC
+    from datetime import UTC
 
-        value = value.replace(tzinfo=UTC)
+    value = created_at
+    # Naive values are stored UTC. Aware values are converted to UTC so the hash does not depend
+    # on the database session time zone (PostgreSQL returns timestamptz in the server's zone).
+    value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
     timestamp = value.isoformat().replace("+00:00", "Z")
     payload = {
         "action_id": action_id,
