@@ -9,10 +9,17 @@ def phase5_client(tmp_path: Path, *, provider=None) -> TestClient:
     return TestClient(create_app(database_url=url, initialize_schema=True, ai_provider=provider))
 
 
-def create_session(client: TestClient, intent: str, tools: list[str]) -> str:
-    return client.post("/api/v1/sessions", json={"intent": intent, "allowed_tools": tools}).json()[
-        "session_id"
-    ]
+def create_session(
+    client: TestClient, intent: str, tools: list[str], destinations: list[str] | None = None
+) -> str:
+    return client.post(
+        "/api/v1/sessions",
+        json={
+            "intent": intent,
+            "allowed_tools": tools,
+            "allowed_destinations": destinations or [],
+        },
+    ).json()["session_id"]
 
 
 def register(client: TestClient, *tools: str) -> None:
@@ -41,7 +48,9 @@ def test_legitimate_workflow_remains_allowed_without_findings(tmp_path: Path) ->
 def test_intent_drift_escalates_external_action(tmp_path: Path) -> None:
     with phase5_client(tmp_path) as client:
         register(client, "send_email")
-        session_id = create_session(client, "Create a local summary", ["send_email"])
+        session_id = create_session(
+            client, "Create a local summary", ["send_email"], ["outside@example.test"]
+        )
         decision = verify(
             client,
             session_id,
@@ -102,6 +111,7 @@ def test_data_staging_sequence_escalates_external_action(tmp_path: Path) -> None
             client,
             "Read sources and upload the final approved report",
             [*read_tools, "upload_report"],
+            ["demo-vault"],
         )
         for tool in read_tools:
             assert verify(client, session_id, tool)["outcome"] == "ALLOW"

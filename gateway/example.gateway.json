@@ -1,0 +1,22 @@
+{
+  "asgp": {
+    "base_url": "http://127.0.0.1:8000",
+    "approval_timeout_seconds": 120
+  },
+  "upstreams": [
+    {
+      "name": "filesystem",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/me/projects/demo"]
+    }
+  ],
+  "register_tools": true,
+  "tools": {
+    "read_text_file": {"sensitivity": "low", "category": "read"},
+    "list_directory": {"sensitivity": "low", "category": "read", "path_parameters": ["path"]},
+    "write_file": {"sensitivity": "medium", "category": "write"},
+    "move_file": {"sensitivity": "high", "category": "delete",
+                  "path_parameters": ["source", "destination"], "destination_parameters": []}
+  },
+  "scan_results": true
+}

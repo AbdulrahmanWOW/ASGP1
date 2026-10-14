@@ -19,7 +19,7 @@ FRONTEND_REPORT_PATH = ROOT / "frontend" / "public" / "evaluation-results.json"
 
 @dataclass
 class NoSignalAlignment:
-    def analyze(self, _session: object, _action: object) -> tuple[float, list[object]]:
+    def analyze(self, *_args: object) -> tuple[float, list[object]]:
         return 1.0, []
 
 
@@ -31,7 +31,7 @@ class NoSignalDetector:
 
 @dataclass
 class NoSignalBehavior:
-    def analyze(self, _action: object, _history: list[object]) -> list[object]:
+    def analyze(self, *_args: object) -> list[object]:
         return []
 
 
@@ -68,7 +68,10 @@ def _replace_lab(value: Any) -> Any:
 def evaluate(mode: str = "full") -> dict[str, Any]:
     if mode not in {"full", "policy_only"}:
         raise ValueError("mode must be 'full' or 'policy_only'")
-    app = create_app(database_url="sqlite+pysqlite:///:memory:", initialize_schema=True)
+    # In-process harness: no network listener, so authentication is not part of what is measured.
+    app = create_app(
+        database_url="sqlite+pysqlite:///:memory:", initialize_schema=True, auth_mode="disabled"
+    )
     if mode == "policy_only":
         governance = app.state.services.governance
         governance.alignment = NoSignalAlignment()
@@ -215,7 +218,7 @@ def write_reports(full: dict[str, Any], ablation: dict[str, Any], output: Path) 
     )
     report = f"""# ASGP reproducible evaluation report
 
-Generated from 12 reviewable seeds in `demo/scenarios.json`, each exercised as five deterministic traceable variants. Results describe this controlled 60-case dataset only and must not be generalized to arbitrary agents or production traffic.
+Generated from {summary["seed_scenario_count"]} reviewable seeds in `demo/scenarios.json`, each exercised as five deterministic traceable variants. Results describe this controlled {summary["scenario_count"]}-case dataset only and must not be generalized to arbitrary agents or production traffic. Seeds L05, L06, A03, A04 and M07–M09 were written after the branch hardening to exercise the gaps it targets (see `evaluation/BRANCH_COMPARISON.md`); they are not an independent test set.
 
 ## Full pipeline
 

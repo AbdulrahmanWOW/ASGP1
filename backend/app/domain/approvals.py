@@ -41,3 +41,5 @@ class Approval(BaseModel):
     expires_at: datetime
     created_at: datetime
     resolved_at: datetime | None = None
+    resolved_by: str | None = None
+    reason_codes: tuple[str, ...] = ()

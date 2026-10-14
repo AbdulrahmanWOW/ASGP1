@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.domain.actions import ActionRequest
 from app.domain.security import FindingKind, FindingSeverity, SecurityFinding
 from app.domain.sessions import Session
+from app.domain.tools import ToolDefinition
+from app.services.intent import VERB_GROUPS, tokens
 
 
 class AlignmentResult(BaseModel):
@@ -23,6 +25,8 @@ class AlignmentContext:
     allowed_tools: frozenset[str]
     tool_name: str
     parameters: dict[str, Any]
+    tool_description: str = ""
+    tool_category: str = "other"
 
 
 class AIProvider(Protocol):
@@ -35,8 +39,17 @@ class MockProvider:
     def score_alignment(self, context: AlignmentContext) -> AlignmentResult:
         intent_tokens = set(re.findall(r"[a-z0-9]+", context.intent.casefold()))
         tool_tokens = set(re.findall(r"[a-z0-9]+", context.tool_name.casefold().replace("_", " ")))
-        external = bool(tool_tokens & {"send", "upload", "export", "publish", "email"})
-        external_authorized = bool(intent_tokens & {"send", "upload", "export", "publish", "email"})
+        if context.tool_category != "other":
+            # Registered category is authoritative (read_email is not an external send), and
+            # each effect is authorized by its own verbs ("transfer" authorizes a payment).
+            verbs = VERB_GROUPS.get(context.tool_category)
+            external = verbs is not None
+            external_authorized = bool(verbs and tokens(context.intent) & verbs)
+        else:
+            external = bool(tool_tokens & {"send", "upload", "export", "publish", "email"})
+            external_authorized = bool(
+                intent_tokens & {"send", "upload", "export", "publish", "email"}
+            )
         if external and not external_authorized:
             return AlignmentResult(
                 score=0.25,
@@ -55,13 +68,15 @@ class IntentAlignmentService:
         self.provider = provider
 
     def analyze(
-        self, session: Session, action: ActionRequest
+        self, session: Session, action: ActionRequest, tool: ToolDefinition | None = None
     ) -> tuple[float | None, list[SecurityFinding]]:
         context = AlignmentContext(
             intent=session.intent,
             allowed_tools=session.allowed_tools,
             tool_name=action.tool_name,
             parameters=action.parameters,
+            tool_description=tool.description if tool else "",
+            tool_category=tool.category.value if tool else "other",
         )
         try:
             result = AlignmentResult.model_validate(self.provider.score_alignment(context))

@@ -83,12 +83,16 @@ def audit_entry_hash(
     stage_timings_ms: dict[str, float],
     previous_hash: str,
     created_at: object,
+    intent_anchor_hash: str | None = None,
+    decided_by: str | None = None,
+    actor: str | None = None,
 ) -> str:
-    value = created_at
-    if value.tzinfo is None:
-        from datetime import UTC
+    from datetime import UTC
 
-        value = value.replace(tzinfo=UTC)
+    value = created_at
+    # Naive values are stored UTC. Aware values are converted to UTC so the hash does not depend
+    # on the database session time zone (PostgreSQL returns timestamptz in the server's zone).
+    value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
     timestamp = value.isoformat().replace("+00:00", "Z")
     payload = {
         "action_id": action_id,
@@ -106,4 +110,8 @@ def audit_entry_hash(
         "stage_timings_ms": stage_timings_ms,
         "tool_name": tool_name,
     }
+    # Fields added after Phase 6 are hashed only when present, so chains written before the
+    # migration still verify unchanged.
+    optional = {"actor": actor, "decided_by": decided_by, "intent_anchor_hash": intent_anchor_hash}
+    payload.update({key: value for key, value in optional.items() if value is not None})
     return hashlib.sha256(canonical_json(payload)).hexdigest()

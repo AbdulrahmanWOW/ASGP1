@@ -22,6 +22,7 @@ class ActionRequest(BaseModel):
     nonce: str | None = Field(default=None, min_length=16, max_length=120)
     sequence: int | None = Field(default=None, ge=1)
     signature: str | None = Field(default=None, min_length=40, max_length=200)
+    intent_token: str | None = Field(default=None, max_length=4096)
 
 
 class ActionVerification(BaseModel):
@@ -38,3 +39,6 @@ class ActionVerification(BaseModel):
     findings: tuple[SecurityFinding, ...] = ()
     stage_timings_ms: dict[str, float] = Field(default_factory=dict)
     total_latency_ms: float = Field(default=0, ge=0)
+    action_risk: int = Field(default=0, ge=0, le=100)
+    decided_by: str = "score"
+    intent_anchor_version: int | None = Field(default=None, ge=1)

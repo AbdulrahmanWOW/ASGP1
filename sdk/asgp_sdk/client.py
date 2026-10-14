@@ -33,13 +33,23 @@ class ASGPClient:
         *,
         signer: ActionSigner | None = None,
         intent_anchor_hash: str | None = None,
+        api_key: str | None = None,
+        intent_token: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.signer = signer
         self.intent_anchor_hash = intent_anchor_hash
+        self.api_key = api_key
+        self.intent_token = intent_token
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return {"X-ASGP-Key": self.api_key} if self.api_key else {}
 
     def verify(self, request: ActionRequest) -> VerificationResult:
+        if self.intent_token is not None and request.intent_token is None:
+            request = request.model_copy(update={"intent_token": self.intent_token})
         if self.signer is not None:
             if self.intent_anchor_hash is None:
                 raise VerificationUnavailable("Signed client requires an intent anchor hash")
@@ -47,7 +57,8 @@ class ASGPClient:
         try:
             response = httpx.post(
                 f"{self.base_url}/api/v1/actions/verify",
-                json=request.model_dump(mode="json"),
+                json=request.model_dump(mode="json", exclude_none=True),
+                headers=self.headers,
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()
@@ -60,12 +71,37 @@ class ASGPClient:
             response = httpx.post(
                 f"{self.base_url}/api/v1/content/ingress",
                 json=request.model_dump(mode="json"),
+                headers=self.headers,
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()
             return ContentIngressResult.model_validate(response.json())
         except (httpx.HTTPError, ValidationError, ValueError) as error:
             raise VerificationUnavailable("ASGP content ingress failed closed") from error
+
+    def get_approval(self, approval_id: UUID) -> ApprovalResult:
+        try:
+            response = httpx.get(
+                f"{self.base_url}/api/v1/approvals/{approval_id}",
+                headers=self.headers,
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+            return ApprovalResult.model_validate(response.json())
+        except (httpx.HTTPError, ValidationError, ValueError) as error:
+            raise VerificationUnavailable("Approval lookup failed closed") from error
+
+    def consume_approval(self, approval_id: UUID, action_id: UUID) -> None:
+        try:
+            response = httpx.post(
+                f"{self.base_url}/api/v1/approvals/{approval_id}/consume",
+                json={"action_id": str(action_id)},
+                headers=self.headers,
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise VerificationUnavailable("Approval consumption failed closed") from error
 
     def wait_for_approval(
         self,
@@ -80,6 +116,7 @@ class ASGPClient:
             while time.monotonic() < deadline:
                 response = httpx.get(
                     f"{self.base_url}/api/v1/approvals/{approval_id}",
+                    headers=self.headers,
                     timeout=self.timeout_seconds,
                 )
                 response.raise_for_status()
@@ -90,6 +127,7 @@ class ASGPClient:
                     consumed = httpx.post(
                         f"{self.base_url}/api/v1/approvals/{approval_id}/consume",
                         json={"action_id": str(action_id)},
+                        headers=self.headers,
                         timeout=self.timeout_seconds,
                     )
                     consumed.raise_for_status()

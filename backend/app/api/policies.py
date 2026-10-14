@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 
 from app.api.dependencies import get_container
+from app.core.auth import AdminOnly, HumanUser
 from app.domain.policies import Policy, PolicyCreate
 from app.services.container import ServiceContainer
 
@@ -12,7 +13,7 @@ Services = Annotated[ServiceContainer, Depends(get_container)]
 
 
 @router.post("", response_model=Policy, status_code=201)
-async def create_policy(request: PolicyCreate, services: Services) -> Policy:
+async def create_policy(request: PolicyCreate, services: Services, _: AdminOnly) -> Policy:
     try:
         return services.store.create_policy(request)
     except IntegrityError as error:
@@ -20,5 +21,5 @@ async def create_policy(request: PolicyCreate, services: Services) -> Policy:
 
 
 @router.get("", response_model=list[Policy])
-async def list_policies(services: Services) -> list[Policy]:
+async def list_policies(services: Services, _: HumanUser) -> list[Policy]:
     return services.store.list_policies()

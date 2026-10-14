@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -14,8 +15,16 @@ ROOT = Path(__file__).resolve().parents[1]
 LAB_ROOT = ROOT / "demo" / "lab_data"
 
 
-def _post(base_url: str, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-    response = httpx.post(f"{base_url}{path}", json=payload, timeout=5)
+ADMIN_KEY = os.getenv("ASGP_DEMO_ADMIN_KEY")
+USER_KEY = os.getenv("ASGP_DEMO_USER_KEY")
+AGENT_KEY = os.getenv("ASGP_DEMO_AGENT_KEY")
+
+
+def _post(
+    base_url: str, path: str, payload: dict[str, Any], key: str | None = None
+) -> dict[str, Any]:
+    headers = {"X-ASGP-Key": key} if key else {}
+    response = httpx.post(f"{base_url}{path}", json=payload, headers=headers, timeout=5)
     response.raise_for_status()
     return response.json()
 
@@ -35,12 +44,12 @@ def wait_for_api(base_url: str, timeout_seconds: float = 60) -> None:
 
 def prepare_demo(base_url: str) -> UUID:
     tools = (
-        {"name": "read_file", "sensitivity": "low"},
-        {"name": "send_mail", "sensitivity": "high"},
-        {"name": "upload", "sensitivity": "medium"},
+        {"name": "read_file", "sensitivity": "low", "category": "read"},
+        {"name": "send_mail", "sensitivity": "high", "category": "external"},
+        {"name": "upload", "sensitivity": "medium", "category": "external"},
     )
     for tool in tools:
-        _post(base_url, "/api/v1/tools/register", tool)
+        _post(base_url, "/api/v1/tools/register", tool, ADMIN_KEY)
     session = _post(
         base_url,
         "/api/v1/sessions",
@@ -54,6 +63,7 @@ def prepare_demo(base_url: str) -> UUID:
             "allowed_paths": [str(LAB_ROOT.resolve())],
             "allowed_destinations": ["review.internal"],
         },
+        USER_KEY,
     )
     return UUID(session["session_id"])
 
@@ -65,7 +75,7 @@ def main() -> None:
     base_url = args.base_url.rstrip("/")
     wait_for_api(base_url)
     session_id = prepare_demo(base_url)
-    client = ASGPClient(base_url)
+    client = ASGPClient(base_url, api_key=AGENT_KEY)
     result = DemoAgent(
         session_id=session_id,
         verifier=client,
