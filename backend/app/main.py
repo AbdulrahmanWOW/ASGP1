@@ -10,6 +10,7 @@ from app.api.agents import router as agents_router
 from app.api.approvals import router as approvals_router
 from app.api.audit import router as audit_router
 from app.api.health import router as health_router
+from app.api.intents import router as intents_router
 from app.api.metrics import router as metrics_router
 from app.api.policies import router as policies_router
 from app.api.risk import router as risk_router
@@ -20,7 +21,9 @@ from app.core.auth import API_KEY_HEADER, AuthConfig, AuthMode
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.services.ai import AIProvider
-from app.services.container import build_container
+from app.services.container import PipelineOptions, build_container
+from app.services.intent import ScopeDrafter
+from app.services.judge import Judge
 
 
 @asynccontextmanager
@@ -39,6 +42,9 @@ def create_app(
     auth_mode: AuthMode | None = None,
     api_keys: str | None = None,
     max_blocks_per_session: int | None = None,
+    pipeline: PipelineOptions | None = None,
+    judge: Judge | None = None,
+    drafter: ScopeDrafter | None = None,
 ) -> FastAPI:
     settings = get_settings()
     auth = AuthConfig.from_spec(
@@ -68,6 +74,20 @@ def create_app(
         approval_ttl_seconds=approval_ttl_seconds,
         ai_provider=ai_provider,
         max_blocks_per_session=max_blocks_per_session or settings.max_blocks_per_session,
+        options=pipeline
+        or PipelineOptions(
+            alignment_provider=settings.alignment_provider,
+            embedding_model=settings.embedding_model,
+            judge=settings.judge,
+            ollama_url=settings.ollama_url,
+            judge_model=settings.judge_model,
+            judge_timeout_seconds=settings.judge_timeout_seconds,
+            require_intent_token=settings.require_intent_token,
+            intent_signing_key=settings.intent_signing_key,
+            intent_token_ttl_seconds=settings.intent_token_ttl_seconds,
+        ),
+        judge=judge,
+        drafter=drafter,
     )
     application.state.auth = auth
     application.add_middleware(
@@ -79,6 +99,7 @@ def create_app(
     )
     application.include_router(health_router, prefix=settings.api_prefix)
     application.include_router(sessions_router, prefix=settings.api_prefix)
+    application.include_router(intents_router, prefix=settings.api_prefix)
     application.include_router(tools_router, prefix=settings.api_prefix)
     application.include_router(actions_router, prefix=settings.api_prefix)
     application.include_router(agents_router, prefix=settings.api_prefix)

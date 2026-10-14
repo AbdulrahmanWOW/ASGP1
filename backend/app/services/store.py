@@ -12,6 +12,7 @@ from app.db.models import (
     AuditRecord,
     DecisionRecord,
     IntentAnchorRecord,
+    IntentDraftRecord,
     NonceRecord,
     PolicyRecord,
     RiskChangeRecord,
@@ -25,6 +26,7 @@ from app.domain.agents import AgentCreate, AgentIdentity, AgentStatus
 from app.domain.approvals import Approval, ApprovalResolution, ApprovalStatus
 from app.domain.audit import AuditEvent, AuditVerification
 from app.domain.decisions import DecisionType
+from app.domain.intents import DraftStatus, IntentDraft, ScopeItem
 from app.domain.policies import Policy, PolicyCreate
 from app.domain.risk import RiskChange
 from app.domain.security import FindingKind, FindingSeverity, SecurityFinding
@@ -50,7 +52,13 @@ class DatabaseStore:
     def __init__(self, database: Database) -> None:
         self.database = database
 
-    def create_session(self, request: SessionCreate) -> Session:
+    def create_session(
+        self,
+        request: SessionCreate,
+        *,
+        confirmed_by: str | None = None,
+        requires_intent_token: bool = False,
+    ) -> Session:
         now, session_id = datetime.now(UTC), uuid4()
         with self.database.session() as db:
             session_record = SessionRecord(
@@ -58,10 +66,11 @@ class DatabaseStore:
                 status=SessionStatus.ACTIVE.value,
                 created_at=now,
                 risk_score=0,
+                requires_intent_token=requires_intent_token,
             )
             db.add(session_record)
             db.flush()
-            db.add(self._anchor_record(session_id, 1, request, now))
+            db.add(self._anchor_record(session_id, 1, request, now, confirmed_by))
             db.add(
                 AuditHeadRecord(
                     session_id=str(session_id),
@@ -108,7 +117,9 @@ class DatabaseStore:
                     sessions.append(self._to_session(record, anchor))
             return sessions
 
-    def update_intent(self, session_id: UUID, request: IntentAnchorUpdate) -> Session:
+    def update_intent(
+        self, session_id: UUID, request: IntentAnchorUpdate, confirmed_by: str | None = None
+    ) -> Session:
         current = self.get_session(session_id)
         if current is None:
             raise SessionNotFoundError(str(session_id))
@@ -117,7 +128,11 @@ class DatabaseStore:
         with self.database.session() as db:
             db.add(
                 self._anchor_record(
-                    session_id, current.anchor_version + 1, request, datetime.now(UTC)
+                    session_id,
+                    current.anchor_version + 1,
+                    request,
+                    datetime.now(UTC),
+                    confirmed_by,
                 )
             )
             db.commit()
@@ -138,6 +153,112 @@ class DatabaseStore:
         if result is None:
             raise RuntimeError("Revoked session could not be loaded")
         return result
+
+    # --- intent drafts (Phase 2.1) -------------------------------------------------------
+
+    def create_draft(self, draft: IntentDraft) -> IntentDraft:
+        with self.database.session() as db:
+            db.add(
+                IntentDraftRecord(
+                    id=str(draft.draft_id),
+                    intent=draft.intent,
+                    status=draft.status.value,
+                    proposal=self._draft_proposal(draft),
+                    drafted_by=draft.drafted_by,
+                    created_by=draft.created_by,
+                    created_at=draft.created_at,
+                    expires_at=draft.expires_at,
+                )
+            )
+            db.commit()
+        result = self.get_draft(draft.draft_id)
+        if result is None:
+            raise RuntimeError("Created draft could not be loaded")
+        return result
+
+    def get_draft(self, draft_id: UUID) -> IntentDraft | None:
+        with self.database.session() as db:
+            record = db.get(IntentDraftRecord, str(draft_id))
+            if record is None:
+                return None
+            self._refresh_draft(record)
+            db.commit()
+            return self._to_draft(record)
+
+    def resolve_draft(
+        self,
+        draft_id: UUID,
+        status: DraftStatus,
+        resolved_by: str,
+        session_id: UUID | None = None,
+    ) -> IntentDraft:
+        with self.database.session() as db:
+            record = db.scalar(
+                select(IntentDraftRecord)
+                .where(IntentDraftRecord.id == str(draft_id))
+                .with_for_update()
+            )
+            if record is None:
+                raise LookupError("Draft not found")
+            self._refresh_draft(record)
+            if record.status != DraftStatus.PENDING.value:
+                raise ValueError(f"Draft is {record.status}, not pending")
+            record.status = status.value
+            record.resolved_by = resolved_by
+            record.resolved_at = datetime.now(UTC)
+            record.session_id = str(session_id) if session_id else None
+            db.commit()
+            return self._to_draft(record)
+
+    def link_draft_session(self, draft_id: UUID, session_id: UUID) -> None:
+        with self.database.session() as db:
+            record = db.get(IntentDraftRecord, str(draft_id))
+            if record is not None:
+                record.session_id = str(session_id)
+                db.commit()
+
+    @staticmethod
+    def _draft_proposal(draft: IntentDraft) -> dict[str, object]:
+        return {
+            "allowed_tools": list(draft.allowed_tools),
+            "forbidden_tools": list(draft.forbidden_tools),
+            "approval_required_tools": list(draft.approval_required_tools),
+            "allowed_paths": list(draft.allowed_paths),
+            "allowed_destinations": list(draft.allowed_destinations),
+            "items": [item.model_dump(mode="json") for item in draft.items],
+            "summary": draft.summary,
+        }
+
+    @staticmethod
+    def _refresh_draft(record: IntentDraftRecord) -> None:
+        expires_at = record.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if record.status == DraftStatus.PENDING.value and expires_at <= datetime.now(UTC):
+            record.status = DraftStatus.EXPIRED.value
+
+    @staticmethod
+    def _to_draft(record: IntentDraftRecord) -> IntentDraft:
+        proposal = record.proposal
+        return IntentDraft(
+            draft_id=UUID(record.id),
+            intent=record.intent,
+            status=DraftStatus(record.status),
+            allowed_tools=tuple(proposal["allowed_tools"]),
+            forbidden_tools=tuple(proposal["forbidden_tools"]),
+            approval_required_tools=tuple(proposal["approval_required_tools"]),
+            allowed_paths=tuple(proposal["allowed_paths"]),
+            allowed_destinations=tuple(proposal["allowed_destinations"]),
+            items=tuple(ScopeItem.model_validate(item) for item in proposal["items"]),
+            summary=proposal["summary"],
+            drafted_by=record.drafted_by,
+            created_by=record.created_by,
+            created_at=record.created_at,
+            expires_at=record.expires_at,
+            session_id=UUID(record.session_id) if record.session_id else None,
+            resolved_by=record.resolved_by,
+            resolved_at=record.resolved_at,
+        )
 
     def register_tool(self, tool: ToolDefinition) -> ToolDefinition:
         with self.database.session() as db:
@@ -747,7 +868,11 @@ class DatabaseStore:
 
     @staticmethod
     def _anchor_record(
-        session_id: UUID, version: int, request: SessionCreate, created_at: datetime
+        session_id: UUID,
+        version: int,
+        request: SessionCreate,
+        created_at: datetime,
+        confirmed_by: str | None = None,
     ) -> IntentAnchorRecord:
         allowed_tools = sorted(request.allowed_tools)
         forbidden_tools = sorted(request.forbidden_tools)
@@ -772,6 +897,7 @@ class DatabaseStore:
                 allowed_destinations=allowed_destinations,
             ),
             created_at=created_at,
+            confirmed_by=confirmed_by,
         )
 
     @staticmethod
@@ -788,6 +914,8 @@ class DatabaseStore:
             intent_anchor_hash=anchor.canonical_hash,
             status=SessionStatus(record.status),
             status_reason=record.status_reason,
+            requires_intent_token=bool(record.requires_intent_token),
+            confirmed_by=anchor.confirmed_by,
             created_at=record.created_at,
         )
 

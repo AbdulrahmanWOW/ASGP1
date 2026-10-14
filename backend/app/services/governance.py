@@ -4,14 +4,17 @@ from app.core.canonical import action_digest
 from app.core.logging import redact
 from app.domain.actions import ActionRequest, ActionVerification
 from app.domain.decisions import DecisionType
-from app.domain.security import SecurityFinding
+from app.domain.security import FindingKind, FindingSeverity, SecurityFinding
 from app.domain.sessions import Session, SessionStatus
+from app.domain.tools import ToolDefinition
 from app.services.ai import IntentAlignmentService
 from app.services.behavior import BehavioralAnalyzer
 from app.services.crypto import RequestCryptoVerifier
 from app.services.injection import InjectionDetector
+from app.services.intent_tokens import IntentTokenService
+from app.services.judge import Judge, JudgeRequest
 from app.services.policy import PermissionPolicy
-from app.services.risk import RiskAssessment, RiskEngine
+from app.services.risk import DecisionLayer, RiskAssessment, RiskEngine
 from app.services.store import DatabaseStore
 from app.services.timing import PipelineTimer
 
@@ -21,9 +24,11 @@ TERMINATION_REASON = "SESSION_TERMINATED_REPEATED_BLOCKS"
 class GovernanceService:
     """Orchestrates the verification pipeline for one proposed tool call.
 
-    Order: session → tool registry → request signature → rules (scope, boundaries, policies)
-    → signals (alignment, injection, behavior) → risk score → floors (high impact, session).
-    Hard-rule failures BLOCK and nothing later can override them.
+    Order: session → signed intent token → tool registry → request signature → rules (scope,
+    boundaries, policies) → signals (alignment, injection, behavior) → risk score → floors
+    (high impact, session) → local LLM judge (gray zone only) → human approval (ESCALATE).
+    Hard-rule failures BLOCK and nothing later can override them; the judge can only tighten,
+    or relax an ESCALATE to ALLOW for non-high-impact calls in a non-suspicious session.
     """
 
     def __init__(
@@ -38,6 +43,9 @@ class GovernanceService:
         approval_ttl_seconds: int,
         *,
         max_blocks_per_session: int = 5,
+        intent_tokens: IntentTokenService | None = None,
+        require_intent_token: bool = False,
+        judge: Judge | None = None,
     ) -> None:
         self.store = store
         self.policy = policy
@@ -48,6 +56,9 @@ class GovernanceService:
         self.behavior = behavior
         self.approval_ttl_seconds = approval_ttl_seconds
         self.max_blocks_per_session = max_blocks_per_session
+        self.intent_tokens = intent_tokens
+        self.require_intent_token = require_intent_token
+        self.judge = judge
 
     def verify(self, action: ActionRequest, *, actor: str | None = None) -> ActionVerification:
         timer = PipelineTimer()
@@ -57,6 +68,21 @@ class GovernanceService:
             return self._hard_block(action, None, "UNKNOWN_SESSION", timer, actor)
         if session.status is not SessionStatus.ACTIVE:
             return self._hard_block(action, session, "SESSION_NOT_ACTIVE", timer, actor)
+        needs_token = (
+            session.requires_intent_token
+            or self.require_intent_token
+            or action.intent_token is not None
+        )
+        if needs_token:
+            with timer.stage("intent_token"):
+                check = (
+                    self.intent_tokens.verify(action.intent_token, session)
+                    if self.intent_tokens is not None
+                    else None
+                )
+            if check is None or not check.valid:
+                code = check.code if check else "INTENT_TOKEN_UNVERIFIABLE"
+                return self._hard_block(action, session, code, timer, actor)
         with timer.stage("tool_registry"):
             tool = self.store.get_tool(action.tool_name)
         if tool is None:
@@ -90,20 +116,112 @@ class GovernanceService:
                 signal_delta=sum(finding.risk_delta for finding in findings),
                 signal_reasons=tuple(finding.code for finding in findings),
             )
-        reason_code = (
-            policy_result.code
+        reason_codes = (
+            (policy_result.code,)
             if assessment.outcome is DecisionType.ALLOW
-            else assessment.reason_code
+            else (assessment.reason_code,)
         )
+        if assessment.outcome is DecisionType.ESCALATE and self.judge is not None:
+            assessment, reason_codes, judge_finding = self._consult_judge(
+                session, action, tool, assessment, timer
+            )
+            findings = (*findings, judge_finding)
         return self._record(
             action,
             session,
             assessment,
-            (reason_code,),
+            reason_codes,
             intent_alignment=alignment_score,
             findings=findings,
             timer=timer,
             actor=actor,
+        )
+
+    def _consult_judge(
+        self,
+        session: Session,
+        action: ActionRequest,
+        tool: ToolDefinition,
+        assessment: RiskAssessment,
+        timer: PipelineTimer,
+    ) -> tuple[RiskAssessment, tuple[str, ...], SecurityFinding]:
+        request = JudgeRequest(
+            intent=session.intent,
+            scope={
+                "allowed_tools": sorted(session.allowed_tools),
+                "forbidden_tools": sorted(session.forbidden_tools),
+                "allowed_paths": list(session.allowed_paths),
+                "allowed_destinations": sorted(session.allowed_destinations),
+            },
+            tool={
+                "name": tool.name,
+                "description": tool.description,
+                "category": tool.category.value,
+                "sensitivity": tool.sensitivity.value,
+                "high_impact": tool.is_high_impact,
+            },
+            arguments=action.parameters,
+            history=self.store.recent_calls(action.session_id),
+        )
+        try:
+            with timer.stage("llm_judge"):
+                verdict = self.judge.judge(request)
+        except Exception:  # fail closed: any judge failure keeps the human in the loop
+            return (
+                assessment,
+                (assessment.reason_code, "JUDGE_UNAVAILABLE"),
+                self._judge_finding(
+                    "JUDGE_UNAVAILABLE",
+                    FindingSeverity.MEDIUM,
+                    "Judge failed or returned invalid output; escalated to a human.",
+                ),
+            )
+        evidence = verdict.reason[:500]
+        if verdict.verdict == "block":
+            blocked = replace(
+                assessment,
+                outcome=DecisionType.BLOCK,
+                reason_code="JUDGE_BLOCK",
+                decided_by=DecisionLayer.JUDGE,
+            )
+            return (
+                blocked,
+                ("JUDGE_BLOCK",),
+                self._judge_finding("JUDGE_BLOCK", FindingSeverity.HIGH, evidence),
+            )
+        may_relax = (
+            assessment.decided_by == DecisionLayer.SCORE
+            and not tool.is_high_impact
+            and session.risk_score < self.risk.SESSION_REVIEW_AT
+        )
+        if verdict.verdict == "allow" and may_relax:
+            allowed = replace(
+                assessment,
+                outcome=DecisionType.ALLOW,
+                reason_code="JUDGE_ALLOW",
+                decided_by=DecisionLayer.JUDGE,
+            )
+            return (
+                allowed,
+                ("JUDGE_ALLOW",),
+                self._judge_finding("JUDGE_ALLOW", FindingSeverity.LOW, evidence),
+            )
+        code = "JUDGE_ALLOW_NOT_PERMITTED" if verdict.verdict == "allow" else "JUDGE_ESCALATE"
+        return (
+            assessment,
+            (assessment.reason_code, code),
+            self._judge_finding(code, FindingSeverity.LOW, evidence),
+        )
+
+    @staticmethod
+    def _judge_finding(code: str, severity: FindingSeverity, evidence: str) -> SecurityFinding:
+        return SecurityFinding(
+            kind=FindingKind.JUDGE,
+            code=code,
+            severity=severity,
+            confidence=0.5,
+            evidence=evidence or "No reason given.",
+            risk_delta=0,
         )
 
     def _hard_block(

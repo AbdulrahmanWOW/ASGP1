@@ -8,6 +8,7 @@ from app.domain.actions import ActionRequest
 from app.domain.security import FindingKind, FindingSeverity, SecurityFinding
 from app.domain.sessions import Session
 from app.domain.tools import ToolDefinition
+from app.services.intent import VERB_GROUPS, tokens
 
 
 class AlignmentResult(BaseModel):
@@ -38,8 +39,17 @@ class MockProvider:
     def score_alignment(self, context: AlignmentContext) -> AlignmentResult:
         intent_tokens = set(re.findall(r"[a-z0-9]+", context.intent.casefold()))
         tool_tokens = set(re.findall(r"[a-z0-9]+", context.tool_name.casefold().replace("_", " ")))
-        external = bool(tool_tokens & {"send", "upload", "export", "publish", "email"})
-        external_authorized = bool(intent_tokens & {"send", "upload", "export", "publish", "email"})
+        if context.tool_category != "other":
+            # Registered category is authoritative (read_email is not an external send), and
+            # each effect is authorized by its own verbs ("transfer" authorizes a payment).
+            verbs = VERB_GROUPS.get(context.tool_category)
+            external = verbs is not None
+            external_authorized = bool(verbs and tokens(context.intent) & verbs)
+        else:
+            external = bool(tool_tokens & {"send", "upload", "export", "publish", "email"})
+            external_authorized = bool(
+                intent_tokens & {"send", "upload", "export", "publish", "email"}
+            )
         if external and not external_authorized:
             return AlignmentResult(
                 score=0.25,

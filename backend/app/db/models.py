@@ -17,6 +17,7 @@ class SessionRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     risk_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    requires_intent_token: Mapped[bool] = mapped_column(nullable=False, default=False)
 
 
 class IntentAnchorRecord(Base):
@@ -35,6 +36,7 @@ class IntentAnchorRecord(Base):
     allowed_destinations: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     canonical_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    confirmed_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class ToolRecord(Base):
@@ -191,3 +193,19 @@ class ApprovalRecord(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     reason_codes: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+
+
+class IntentDraftRecord(Base):
+    __tablename__ = "intent_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    intent: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    proposal: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    drafted_by: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    session_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

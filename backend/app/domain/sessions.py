@@ -41,6 +41,8 @@ class Session(BaseModel):
     intent_anchor_hash: str = Field(min_length=64, max_length=64)
     status: SessionStatus = SessionStatus.ACTIVE
     status_reason: str | None = None
+    requires_intent_token: bool = False
+    confirmed_by: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

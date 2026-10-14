@@ -64,7 +64,7 @@ Rate limiting; exporting audit heads outside the DB; multi-agent chain of trust;
 
 - [x] Context pack (`CLAUDE.md`, `docs/context/`, this plan)
 - [x] Phase 1 — auth + roles, fail-closed boundaries, risk rework + run termination, category-based behavior, traceability (migration 0006)
-- [ ] Phase 2
+- [x] Phase 2 — intent drafts + human confirmation, signed intent tokens, embedding layer (lexical/hashing/sentence-transformers), local Ollama judge for the gray zone, assistive LLM drafter (migration 0007)
 - [ ] Phase 3
 - [ ] Phase 4
 - [ ] Phase 5

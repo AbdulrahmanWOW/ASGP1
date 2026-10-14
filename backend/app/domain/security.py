@@ -9,6 +9,7 @@ class FindingKind(StrEnum):
     PROMPT_INJECTION = "prompt_injection"
     BEHAVIOR = "behavior"
     PROVIDER_FAILURE = "provider_failure"
+    JUDGE = "judge"
 
 
 class FindingSeverity(StrEnum):
