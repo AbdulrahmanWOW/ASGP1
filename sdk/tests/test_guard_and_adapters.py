@@ -9,9 +9,10 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from _harness import USER, InProcessClient, gateway, h, resolve, setup_mail_session
 from asgp_sdk import RunTerminated, ToolGuard
 from asgp_sdk.contracts import DecisionOutcome
+
+from tests_support.harness import USER, InProcessClient, gateway, h, resolve, setup_mail_session
 
 
 class Tools:
